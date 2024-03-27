@@ -23,8 +23,11 @@ model FilePath {
   assetObjectId Int?
   assetObject   AssetObject? @relation(fields: [assetObjectId], references: [id], onDelete: SetNull)
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  location   Location? @relation(fields: [locationId], references: [id])
+  locationId Int?
 
   @@unique([materializedPath, name])
   @@index([materializedPath])
@@ -136,4 +139,92 @@ model VideoClip {
   frames VideoFrame[]
 
   caption String?
+}
+
+model CRDTOperation {
+  id Int @id @default(autoincrement())
+
+  timestamp BigInt
+  model     String
+
+  record_id Bytes
+  // Enum: ??
+  kind      String
+  data      Bytes
+
+  instance_id Int
+  instance    Instance @relation(fields: [instance_id], references: [id])
+
+  @@map("crdt_operation")
+}
+
+/// @local(id: pub_id)
+// represents a single `.db` file (SQLite DB) that is paired to the current library.
+// A `LibraryInstance` is always owned by a single `Node` but it's possible for that node to change (or two to be owned by a single node).
+model Instance {
+  id              Int    @id @default(autoincrement()) // This is is NOT globally unique
+  pub_id          Bytes  @unique // This UUID is meaningless and exists soley cause the `uhlc::ID` must be 16-bit. Really this should be derived from the `identity` field.
+  // Enum: sd_p2p::Identity (or sd_core::p2p::IdentityOrRemoteIdentity in early versions)
+  identity        Bytes?
+  // Enum: sd_core::node::RemoteIdentity
+  remote_identity Bytes
+
+  metadata Bytes? // TODO: This should not be optional
+
+  last_seen    DateTime // Time core started for owner, last P2P message for P2P node
+  date_created DateTime
+
+  // clock timestamp for sync
+  timestamp BigInt?
+
+  locations          Location[]
+  CRDTOperation      CRDTOperation[]
+  CloudCRDTOperation CloudCRDTOperation[]
+
+  @@map("instance")
+}
+
+/// @shared(id: pub_id)
+model Location {
+  id     Int   @id @default(autoincrement())
+  pub_id Bytes @unique
+
+  name                   String?
+  path                   String?
+  total_capacity         Int?
+  available_capacity     Int?
+  size_in_bytes          Bytes?
+  is_archived            Boolean?
+  generate_preview_media Boolean?
+  sync_preview_media     Boolean?
+  hidden                 Boolean?
+  date_created           DateTime?
+
+  /// @local
+  // this is just a client side cache which is annoying but oh well (@brendan)
+  instance_id Int?
+  instance    Instance? @relation(fields: [instance_id], references: [id], onDelete: SetNull)
+
+  file_paths FilePath[]
+  // indexer_rules IndexerRulesInLocation[] // TODO 暂时不用
+
+  @@map("location")
+}
+
+/// @local(id: id)
+model CloudCRDTOperation {
+  id Int @id @default(autoincrement())
+
+  timestamp BigInt
+  model     String
+
+  record_id Bytes
+  // Enum: ??
+  kind      String
+  data      Bytes
+
+  instance_id Int
+  instance    Instance @relation(fields: [instance_id], references: [id])
+
+  @@map("cloud_crdt_operation")
 }
