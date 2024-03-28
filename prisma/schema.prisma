@@ -2,8 +2,16 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "cargo prisma"
-  output   = "../crates/prisma/src/prisma.rs"
+  provider      = "cargo prisma"
+  output        = "../crates/prisma/src/prisma"
+  module_path   = "prisma"
+  client_format = "folder"
+}
+
+generator sync {
+  provider      = "cargo prisma-sync"
+  output        = "../crates/prisma/src/prisma_sync"
+  client_format = "folder"
 }
 
 datasource db {
@@ -13,18 +21,21 @@ datasource db {
   // url      = env("LOCAL_DB_URL")
 }
 
+/// @shared(id: pub_id)
 model FilePath {
-  id            Int       @id @default(autoincrement())
-  isDir         Boolean
+  id     Int     @id @default(autoincrement())
+  pub_id Bytes   @unique
+  isDir  Boolean?
 
-  materializedPath String
-  name          String
+  materializedPath String?
+  name             String?
 
   assetObjectId Int?
   assetObject   AssetObject? @relation(fields: [assetObjectId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) // todo 需要同步的元数据创建时间 date_created
+  updatedAt DateTime @updatedAt // todo date_modified 文件最后一次修改时间
+  // todo date_indexed 最后一次被添加到索引的时间
 
   location   Location? @relation(fields: [locationId], references: [id])
   locationId Int?
@@ -33,55 +44,60 @@ model FilePath {
   @@index([materializedPath])
 }
 
+/// @shared(id: pub_id)
 model AssetObject {
-  id            Int       @id @default(autoincrement())
+  id     Int   @id @default(autoincrement())
+  pub_id Bytes @unique
 
-  note          String?
-  hash          String    @unique
+  note String?
+  // hash String  @unique // todo 为什么不用uuid，是因为uhlc这个库的id是16位的
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now()) // todo 需要同步的元数据创建时间 date_created
+  updatedAt DateTime @updatedAt // todo 需要同步的元数据更新时间 date_accessed
 
-  mediaData     MediaData?
+  mediaData MediaData?
 
-  filePaths     FilePath[]
-  tasks         FileHandlerTask[]
+  filePaths FilePath[]
+  tasks     FileHandlerTask[]
 }
 
+/// @shared(id: assetObject)
 model MediaData {
-  id            Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  width         Int?
-  height        Int?
-  duration      Int?
-  bitRate       Int?
-  size          Int?
-  mimeType      String?
+  width    Int?
+  height   Int?
+  duration Int?
+  bitRate  Int?
+  size     Int?
+  mimeType String?
 
-  description   String?
+  description String?
 
-  assetObjectId Int       @unique
-  assetObject   AssetObject? @relation(fields: [assetObjectId], references: [id], onDelete: Cascade)
+  assetObjectId Int          @unique
+  assetObject   AssetObject @relation(fields: [assetObjectId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("media_data")
 }
 
 model FileHandlerTask {
-  id            Int       @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   assetObjectId Int
   assetObject   AssetObject? @relation(fields: [assetObjectId], references: [id], onDelete: Cascade)
 
-  taskType      String
+  taskType String
 
   exitCode    Int?
   exitMessage String?
 
-  startsAt      DateTime?
-  endsAt        DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([assetObjectId, taskType])
 }

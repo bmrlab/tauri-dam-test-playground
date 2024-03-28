@@ -1,0 +1,18 @@
+[package]
+name = "sd_sync"
+version = "0.1.0"
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+prisma-client-rust = { workspace = true }
+rmp = "0.8.12"
+rmp-serde = "1.1.2"
+rmpv.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta = { workspace = true, features = ["uuid", "uhlc", "serde_json"] }
+uhlc.workspace = true
+uuid = { workspace = true, features = ["serde", "v4"] }

@@ -1,7 +1,15 @@
 #[allow(warnings, unused)]
 pub mod prisma;
 
+#[allow(warnings, unused)]
+pub mod prisma_sync;
+
+#[allow(warnings, unused)]
 pub use prisma::*;
+
+pub use prisma_sync::*;
+
+pub use prisma::asset_object;
 
 #[cfg(test)]
 mod prisma_tests {
@@ -9,9 +17,11 @@ mod prisma_tests {
     use futures::future::join_all;
     use std::sync::Arc;
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+    use uhlc::ID;
+    use uuid::Uuid;
 
     async fn exec(client: Arc<PrismaClient>, i: i32)
-        // -> Result<asset_object::Data, prisma_client_rust::QueryError>
+    // -> Result<asset_object::Data, prisma_client_rust::QueryError>
     {
         let start = std::time::Instant::now();
         // wait for random seconds
@@ -22,19 +32,27 @@ mod prisma_tests {
         // let client = new_client().await.unwrap();
         let res = client
             .asset_object()
-            .create(
-                i.to_string(),
-                vec![asset_object::note::set(Some(i.to_string()))]
-            )
+            .create(ID::from(Uuid::new_v4()).as_slice().to_vec(), vec![])
             .exec()
             .await;
         let duration = start.elapsed();
         match res {
             Ok(_) => {
-                println!("executed {:<5}, wait for {:<5}, duration {:<5}", i, millis, duration.as_millis());
+                println!(
+                    "executed {:<5}, wait for {:<5}, duration {:<5}",
+                    i,
+                    millis,
+                    duration.as_millis()
+                );
             }
             Err(err) => {
-                println!("executed {:<5}, wait for {:<5}, duration {:<5}, error: {:?}", i, millis, duration.as_millis(), err);
+                println!(
+                    "executed {:<5}, wait for {:<5}, duration {:<5}, error: {:?}",
+                    i,
+                    millis,
+                    duration.as_millis(),
+                    err
+                );
             }
         };
         // return res;
@@ -58,7 +76,12 @@ mod prisma_tests {
         //     Err(err) => println!("journal_mode err: {:?}", err),
         // };
         // clear asset objects
-        client.asset_object().delete_many(vec![]).exec().await.unwrap();
+        client
+            .asset_object()
+            .delete_many(vec![])
+            .exec()
+            .await
+            .unwrap();
 
         // let client = Arc::new(new_client().await.unwrap());
         let client = Arc::new(client);
