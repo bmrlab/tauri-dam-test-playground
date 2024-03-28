@@ -13,7 +13,7 @@ const inter = Inter({ subsets: ['latin'] })
 // });
 
 import ClientLayout from '@/components/ClientLayout'
-import Sidebar from '@/components/Sidebar'
+import Viewport from '@/components/Viewport'
 import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Muse | a local DAM of videos',
@@ -29,10 +29,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ClientLayout>
-          <main className="flex">
-            <Sidebar />
-            <div className="h-screen flex-1 bg-white">{children}</div>
-          </main>
+          <Viewport>
+            <Viewport.Sidebar />
+            {children}
+            {/* children should be a Viewport.Page element */}
+          </Viewport>
         </ClientLayout>
         <Toaster />
         <SonnerToaster />
