@@ -127,6 +127,24 @@ pub async fn process_video_metadata(
         )
     })?;
 
+    if let Some(mime_type) = asset_object_data.mime_type {
+        if mime_type.ends_with("x-matroska")
+            || mime_type.ends_with("x-msvideo")
+            || mime_type.ends_with("x-ms-wmv")
+            || mime_type.ends_with("vnd.rn-realmedia")
+            || mime_type.ends_with("mpeg")
+            || mime_type.ends_with("vnd.rn-realmedia-vbr")
+        {
+            video_handler.convert(mime_type).map_err(|e| {
+                error!("failed to convert video: {e}");
+                rspc::Error::new(
+                    rspc::ErrorCode::InternalServerError,
+                    format!("failed to convert video: {}", e),
+                )
+            })?;
+        }
+    }
+
     let values: Vec<media_data::SetParam> = vec![
         media_data::width::set(Some(metadata.width as i32)),
         media_data::height::set(Some(metadata.height as i32)),

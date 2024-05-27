@@ -364,6 +364,67 @@ impl VideoDecoder {
             }
         }
     }
+
+    pub fn convert(&self, mime_type: String, convert_path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let mut args = Vec::new();
+        if mime_type.ends_with("x-matroska") || mime_type.ends_with("x-msvideo") {
+            args = vec![
+                "-i",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+                "-codec",
+                "copy",
+                convert_path
+                    .as_ref()
+                    .to_str()
+                    .expect("invalid convert path"),
+            ]
+        }
+
+        if mime_type.ends_with("video/x-ms-wmv")
+            || mime_type.ends_with("vnd.rn-realmedia")
+            || mime_type.ends_with("mpeg")
+            || mime_type.ends_with("vnd.rn-realmedia-vbr")
+        {
+            args = vec![
+                "-i",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+                "-c:v",
+                "libx264",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                "-q:a",
+                "100",
+                convert_path
+                    .as_ref()
+                    .to_str()
+                    .expect("invalid convert path"),
+            ]
+        }
+
+        match std::process::Command::new(&self.binary_file_path)
+            .args(args)
+            .output()
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    bail!(
+                        "Failed to convert video: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => {
+                bail!("Failed to convert video: {e}");
+            }
+        }
+    }
 }
 
 #[cfg(feature = "ffmpeg-dylib")]
@@ -420,12 +481,7 @@ async fn test_save_video_segment() {
         let video_decoder = VideoDecoder::new(video_file).unwrap();
         let output_dir = "/Users/xddotcom/Downloads";
         let _result = video_decoder
-            .save_video_segment(
-                "test.mp4",
-                output_dir,
-                3000,
-                5000,
-            )
+            .save_video_segment("test.mp4", output_dir, 3000, 5000)
             .unwrap();
         // println!("{result:#?}");
     }

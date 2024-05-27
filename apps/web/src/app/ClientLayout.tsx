@@ -196,12 +196,22 @@ export default function ClientLayout({
   )
 
   const getFileSrc = useCallback(
-    (assetObjectHash: string) => {
+    (assetObjectHash: string, assetObjectMimeType?: string) => {
       if (!library) {
         return '/images/empty.png'
       }
       // const fileFullPath = library.dir + '/files/' + assetObjectHash
-      const fileFullPath = `${library.dir}/files/${getFileShardHex(assetObjectHash)}/${assetObjectHash}`
+      let fileFullPath = `${library.dir}/files/${getFileShardHex(assetObjectHash)}/${assetObjectHash}`
+      if (
+        assetObjectMimeType === 'video/x-matroska' ||
+        assetObjectMimeType === 'video/x-msvideo' ||
+        assetObjectMimeType === 'video/x-ms-wmv' ||
+        assetObjectMimeType === 'video/vnd.rn-realmedia' ||
+        assetObjectMimeType === 'video/mpeg' ||
+        assetObjectMimeType === "video/vnd.rn-realmedia-vbr"
+      ) {
+        fileFullPath = `${library.dir}/artifacts/${getFileShardHex(assetObjectHash)}/${assetObjectHash}/out.mp4`
+      }
       if (typeof window !== 'undefined' && typeof window.__TAURI__ !== 'undefined') {
         return convertFileSrc(fileFullPath)
       } else {
