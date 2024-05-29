@@ -11,6 +11,8 @@
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "@gendam/assets": "workspace:*",
     "@gendam/tailwind": "workspace:*",
     "@gendam/ui": "workspace:*",

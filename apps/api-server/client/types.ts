@@ -18,6 +18,7 @@ export type Procedures = {
         { key: "tasks.list", input: TaskListRequestPayload, result: FileHandlerTask[] } | 
         { key: "users.get", input: never, result: Auth | null } | 
         { key: "version", input: never, result: string } | 
+        { key: "video.stream", input: StreamRequestPayload, result: string } | 
         { key: "video.tasks.list", input: VideoTaskListRequestPayload, result: VideoWithTasksPageResult },
     mutations: 
         { key: "assets.create_asset_object", input: AssetObjectCreatePayload, result: FilePath } | 
@@ -139,6 +140,8 @@ export type FilePathMovePayload = { active: FilePathRequestPayload; target: File
 export type AssetObject = { id: number; hash: string; size: number; mimeType: string | null; createdAt: string; updatedAt: string }
 
 export type TaskListRequestPayload = { filter: TaskListRequestFilter }
+
+export type StreamRequestPayload = { assetObjectHash: string }
 
 export type SearchResultMetadata = { startTime: number; endTime: number; score: number }
 
