@@ -7,6 +7,7 @@ use crate::{
 use async_trait::async_trait;
 use content_library::{Library, QdrantServerInfo};
 use p2p::Node;
+use tokio::task::JoinHandle;
 use std::{
     path::PathBuf,
     sync::{mpsc::Sender, Arc, Mutex},
@@ -39,6 +40,9 @@ pub trait CtxWithLibrary: Sync + CtxWithP2P + CtxWithAI + CtxWithDownload {
     fn library(&self) -> Result<Library, rspc::Error>;
     fn task_tx(&self) -> Result<Sender<TaskPayload>, rspc::Error>;
     fn qdrant_info(&self) -> Result<QdrantServerInfo, rspc::Error>;
+
+    fn add_task(&mut self, key: String, task: JoinHandle<()>) -> ();
+    fn delete_task(&mut self, key: String) -> ();
 }
 
 pub trait CtxWithP2P {

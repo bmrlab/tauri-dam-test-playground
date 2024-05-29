@@ -9,6 +9,7 @@ import { Button } from '@gendam/ui/v2/button'
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useInspector } from './store'
+import { useVideoDecoderUrl } from '@/hooks/useVideoDecoderUrl'
 
 const FolderDetail = ({ data }: { data: FilePath }) => {
   return (
@@ -101,16 +102,19 @@ const AssetObjectDetail = ({ data }: { data: FilePath }) => {
   }, [tasksQuery.data])
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const { data: videoDecoderUrlData, isLoading } = useVideoDecoderUrl(data?.assetObject?.hash, data?.assetObject?.mimeType!)
   useEffect(() => {
     if (!videoRef?.current || !data.assetObject?.hash) {
       return
     }
-    const videoSrc = currentLibrary.getFileSrc(data.assetObject.hash, data.assetObject.mimeType!)
+    if (isLoading) return
+
+    const videoSrc = videoDecoderUrlData.url
     // 重新赋值才能在 src 变化了以后重新加载视频
     if (videoRef.current.src != videoSrc) {
-      videoRef.current.src = videoSrc
+      videoRef.current.src = videoSrc!
     }
-  }, [currentLibrary, data, videoRef])
+  }, [currentLibrary, data, videoRef, isLoading, videoDecoderUrlData])
 
   if (!data.assetObject || !data.assetObject.mediaData) {
     return

@@ -20,7 +20,7 @@ use qdrant_client::qdrant::{
 };
 use std::{
     collections::HashSet,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -271,7 +271,8 @@ impl VideoHandler {
         }
     }
 
-    pub fn save_video_segment(&self,
+    pub fn save_video_segment(
+        &self,
         verbose_file_name: &str,
         output_dir: impl AsRef<std::path::Path>,
         milliseconds_from: u32,
@@ -282,21 +283,20 @@ impl VideoHandler {
             verbose_file_name,
             output_dir,
             milliseconds_from,
-            milliseconds_to
+            milliseconds_to,
         )
     }
 
     // 格式转换
-    pub fn convert(&self, mime_type: String) -> anyhow::Result<()> {
+    pub fn convert(&self, mime_type: String, out_path: impl AsRef<Path>) -> anyhow::Result<()> {
         // 记录时间
         let start = std::time::Instant::now();
         let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
-        video_decoder.convert(mime_type,&self.artifacts_dir.join("out.mp4"))?;
+        video_decoder.convert(mime_type, &out_path)?;
         let duration = start.elapsed();
         tracing::debug!("convert video duration: {:?}", duration);
         Ok(())
     }
-
 }
 
 #[async_trait]

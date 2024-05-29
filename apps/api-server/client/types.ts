@@ -18,6 +18,7 @@ export type Procedures = {
         { key: "tasks.list", input: TaskListRequestPayload, result: FileHandlerTask[] } | 
         { key: "users.get", input: never, result: Auth | null } | 
         { key: "version", input: never, result: string } | 
+        { key: "video.get_temporary_decoder_url", input: TemporaryDecoderUrlPayload, result: any } | 
         { key: "video.tasks.list", input: VideoTaskListRequestPayload, result: VideoWithTasksPageResult },
     mutations: 
         { key: "assets.create_asset_object", input: AssetObjectCreatePayload, result: FilePath } | 
@@ -55,6 +56,8 @@ export type SetModelPayload = { category: AIModelCategory; modelId: string }
 export type LibrarySettings = { title: string; appearanceTheme: LibrarySettingsThemeEnum; explorerLayout: LibrarySettingsLayoutEnum; models: LibraryModels }
 
 export type ModelArtifact = { url: string; checksum: string }
+
+export type TemporaryDecoderUrlPayload = { hash: string }
 
 export type Auth = { id: string; name: string }
 

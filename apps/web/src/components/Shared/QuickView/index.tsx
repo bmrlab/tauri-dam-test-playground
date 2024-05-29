@@ -1,5 +1,7 @@
-import Icon from '@gendam/ui/icons'
+import { useVideoDecoderUrl } from '@/hooks/useVideoDecoderUrl'
 import { useCurrentLibrary } from '@/lib/library'
+import { cn } from '@gendam/tailwind/utils'
+import Icon from '@gendam/ui/icons'
 import { useEffect, useRef } from 'react'
 import { useQuickViewStore, type QuickViewItem } from './store'
 
@@ -7,17 +9,22 @@ const Player = ({ data }: { data: QuickViewItem }) => {
   const currentLibrary = useCurrentLibrary()
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  const { data: videoDecoderUrlData, isLoading } = useVideoDecoderUrl(data.assetObject.hash, data.assetObject.mimeType!)
+
   useEffect(() => {
     const $video = videoRef?.current
     if (!$video) {
       return
     }
+    if (isLoading) return
+
     const startTime = Math.max(0, (data.video?.currentTime || 0) - 0.5)
     // const endTime = startTime + 2
-    const videoSrc = currentLibrary.getFileSrc(data.assetObject.hash, data.assetObject.mimeType!)
+    const videoSrc = videoDecoderUrlData.url
     // 重新赋值才能在 src 变化了以后重新加载视频
     if ($video.src != videoSrc) {
-      $video.src = videoSrc
+      $video.src = videoSrc!
       $video.currentTime = startTime
       // $video.ontimeupdate = () => {
       //   if ($video.currentTime >= endTime) {
@@ -26,7 +33,7 @@ const Player = ({ data }: { data: QuickViewItem }) => {
       //   }
       // }
     }
-  }, [currentLibrary, data])
+  }, [currentLibrary, data, isLoading, videoDecoderUrlData])
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden">
@@ -36,10 +43,11 @@ const Player = ({ data }: { data: QuickViewItem }) => {
         controlsList="nodownload"
         autoPlay
         muted
-        className="h-auto max-h-full w-auto max-w-full overflow-hidden rounded-md"
+        className={cn('h-auto max-h-full w-auto max-w-full overflow-hidden rounded-md', isLoading ? 'hidden' : 'block')}
       >
         {/* <source src={currentLibrary.getFileSrc(assetObject.hash)} /> */}
       </video>
+      {isLoading && <Icon.Loading className="h-8 w-8 animate-spin text-white" />}
     </div>
   )
 }

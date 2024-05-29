@@ -14,10 +14,12 @@ use content_library::{
 use p2p::Node;
 use std::{
     boxed::Box,
+    collections::HashMap,
     fmt::Debug,
     path::PathBuf,
     sync::{atomic::AtomicBool, mpsc::Sender, Arc, Mutex},
 };
+use tokio::task::JoinHandle;
 use vector_db::{get_language_collection_name, get_vision_collection_name, kill_qdrant_server};
 
 /**
@@ -85,6 +87,7 @@ pub struct Ctx<S: CtxStore> {
     ai_handler: Arc<Mutex<Option<AIHandler>>>,
     download_hub: Arc<Mutex<Option<DownloadHub>>>,
     node: Arc<Mutex<Node<ShareInfo>>>,
+    tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>, // 定时任务
 }
 
 impl<S: CtxStore> Clone for Ctx<S> {
@@ -100,6 +103,7 @@ impl<S: CtxStore> Clone for Ctx<S> {
             download_hub: self.download_hub.clone(),
             temp_dir: self.temp_dir.clone(),
             node: Arc::clone(&self.node),
+            tasks: self.tasks.clone(),
         }
     }
 }
@@ -141,6 +145,7 @@ impl<S: CtxStore> Ctx<S> {
             is_busy: Arc::new(Mutex::new(AtomicBool::new(false))),
             download_hub: Arc::new(Mutex::new(None)),
             node,
+            tasks: Default::default(),
         }
     }
 }
@@ -556,5 +561,15 @@ impl<S: CtxStore + Send> CtxWithLibrary for Ctx<S> {
                 dim: vision_dim,
             },
         })
+    }
+
+    // 添加定时任务
+    fn add_task(&mut self, key: String, task: JoinHandle<()>) -> () {
+        self.tasks.lock().unwrap().insert(key, task);
+    }
+
+    // 删除定时任务
+    fn delete_task(&mut self, key: String) -> () {
+        self.tasks.lock().unwrap().remove(&key);
     }
 }
