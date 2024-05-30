@@ -271,7 +271,8 @@ impl VideoHandler {
         }
     }
 
-    pub fn save_video_segment(&self,
+    pub fn save_video_segment(
+        &self,
         verbose_file_name: &str,
         output_dir: impl AsRef<std::path::Path>,
         milliseconds_from: u32,
@@ -282,8 +283,13 @@ impl VideoHandler {
             verbose_file_name,
             output_dir,
             milliseconds_from,
-            milliseconds_to
+            milliseconds_to,
         )
+    }
+
+    pub async fn process_video_to_pipe(&self) -> anyhow::Result<Vec<u8>> {
+        let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
+        video_decoder.process_video_to_pipe().await
     }
 }
 

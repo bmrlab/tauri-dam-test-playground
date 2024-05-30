@@ -1,4 +1,5 @@
 import { useCurrentLibrary } from '@/lib/library'
+import { rspc } from '@/lib/rspc'
 import Icon from '@gendam/ui/icons'
 import Image from 'next/image'
 import { useEffect, useRef } from 'react'
@@ -8,26 +9,45 @@ const Player = ({ data }: { data: QuickViewItem }) => {
   const currentLibrary = useCurrentLibrary()
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  const { mutateAsync } = rspc.useMutation(['video.stream'])
+
+  const init = async () => {
+    const res = await mutateAsync({
+      hash: data.assetObject.hash!,
+    })
+    const videoData: Uint8Array = new Uint8Array(res.data)
+    const mediaSource = new MediaSource()
+    const videoElement = videoRef.current
+    videoElement!.src = URL.createObjectURL(mediaSource)
+    mediaSource.addEventListener('sourceopen', () => {
+      const sourceBuffer = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')
+
+      const appendNext = () => {
+        if (videoData.length === 0) {
+          mediaSource.endOfStream()
+          return
+        }
+        if (!sourceBuffer.updating) {
+          sourceBuffer.appendBuffer(videoData)
+        }
+      }
+
+      const next = () => {
+        mediaSource.endOfStream()
+      }
+
+      sourceBuffer.addEventListener('updateend', next)
+      appendNext()
+    })
+  }
+
   useEffect(() => {
-    const $video = videoRef?.current
-    if (!$video) {
+    if (!videoRef.current) {
       return
     }
-    const startTime = Math.max(0, (data.video?.currentTime || 0) - 0.5)
-    // const endTime = startTime + 2
-    const videoSrc = currentLibrary.getFileSrc(data.assetObject.hash)
-    // 重新赋值才能在 src 变化了以后重新加载视频
-    if ($video.src != videoSrc) {
-      $video.src = videoSrc
-      $video.currentTime = startTime
-      // $video.ontimeupdate = () => {
-      //   if ($video.currentTime >= endTime) {
-      //     $video.pause()
-      //     $video.ontimeupdate = null
-      //   }
-      // }
-    }
-  }, [currentLibrary, data])
+    init()
+  }, [videoRef])
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden">

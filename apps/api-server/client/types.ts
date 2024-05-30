@@ -43,6 +43,7 @@ export type Procedures = {
         { key: "p2p.reject_file_share", input: string, result: any } | 
         { key: "p2p.share", input: SharePayload, result: any } | 
         { key: "users.set", input: Auth, result: Auth } | 
+        { key: "video.stream", input: StreamRequestPayload, result: any } | 
         { key: "video.tasks.cancel", input: TaskCancelRequestPayload, result: null } | 
         { key: "video.tasks.create", input: string, result: null } | 
         { key: "video.tasks.regenerate", input: TaskRedoRequestPayload, result: null },
@@ -133,6 +134,8 @@ export type AIModelResult = { info: AIModel; status: AIModelStatus }
 export type DownloadModelPayload = { modelId: string }
 
 export type FilePathGetPayload = { materializedPath: string; name: string }
+
+export type StreamRequestPayload = { hash: string }
 
 export type AIModel = { id: string; title: string; description: string; categories: AIModelCategory[]; artifacts_dir: string; artifacts: ModelArtifact[]; model_type: ConcreteModelType; params: any; dim: number | null }
 

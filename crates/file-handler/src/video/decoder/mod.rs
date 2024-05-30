@@ -18,7 +18,11 @@ use crate::metadata::{
 use super::FRAME_FILE_EXTENSION;
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::{path::Path, process::Stdio};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt},
+    process::Command,
+};
 
 #[cfg(feature = "ffmpeg-dylib")]
 impl VideoDecoder {
@@ -365,6 +369,35 @@ impl VideoDecoder {
                 bail!("Failed to save video segment: {e}");
             }
         }
+    }
+
+    pub async fn process_video_to_pipe(
+        &self,
+    ) -> anyhow::Result<Vec<u8>> {
+        let mut ffmpeg = Command::new(&self.binary_file_path)
+            .args(&[
+                "-i",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+                "-f",
+                "mp4",
+                "-movflags",
+                "frag_keyframe+empty_moov",
+                "-",
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to start ffmpeg");
+
+        let mut ffmpeg_stdout = ffmpeg.stdout.take().expect("Failed to open stdout");
+        let mut buffer = Vec::new();
+        ffmpeg_stdout
+            .read_to_end(&mut buffer)
+            .await
+            .expect("Failed to read from ffmpeg stdout");
+        tracing::info!("ffmpeg_stdout: {:?}", buffer.len());
+        Ok(buffer)
     }
 }
 
