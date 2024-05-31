@@ -287,9 +287,23 @@ impl VideoHandler {
         )
     }
 
-    pub async fn process_video_to_pipe(&self) -> anyhow::Result<Vec<u8>> {
+    pub async fn get_video_duration(&self) -> anyhow::Result<f64> {
         let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
-        video_decoder.process_video_to_pipe().await
+        video_decoder.get_video_duration().await
+    }
+
+    pub async fn process_video_to_pipe(&self, start_time: f64) -> anyhow::Result<Vec<u8>> {
+        let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
+        video_decoder.process_video_to_pipe(start_time).await
+    }
+
+    pub async fn get_hls(&self) -> anyhow::Result<()> {
+        let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
+        let out_path = self.artifacts_dir.clone().join("out");
+        if let Err(e) = tokio::fs::create_dir_all(&out_path).await {
+            bail!("Failed to create output directory: {}", e);
+        }
+        video_decoder.get_hls(out_path.join("index.m3u8")).await
     }
 }
 

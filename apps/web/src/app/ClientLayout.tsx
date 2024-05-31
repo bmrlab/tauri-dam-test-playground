@@ -201,7 +201,7 @@ export default function ClientLayout({
         return '/images/empty.png'
       }
       // const fileFullPath = library.dir + '/files/' + assetObjectHash
-      const fileFullPath = `${library.dir}/files/${getFileShardHex(assetObjectHash)}/${assetObjectHash}`
+      const fileFullPath = `${library.dir}/files/${getFileShardHex(assetObjectHash)}/${assetObjectHash}/out/index.m3u8`
       if (typeof window !== 'undefined' && typeof window.__TAURI__ !== 'undefined') {
         return convertFileSrc(fileFullPath)
       } else {

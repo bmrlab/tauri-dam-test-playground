@@ -18,11 +18,10 @@ use crate::metadata::{
 use super::FRAME_FILE_EXTENSION;
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{path::Path, process::Stdio};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt},
-    process::Command,
-};
+use std::{process::Output, str};
+use tokio::{io::AsyncReadExt, process::Command, time::Instant};
 
 #[cfg(feature = "ffmpeg-dylib")]
 impl VideoDecoder {
@@ -371,15 +370,57 @@ impl VideoDecoder {
         }
     }
 
-    pub async fn process_video_to_pipe(
-        &self,
-    ) -> anyhow::Result<Vec<u8>> {
+    pub async fn get_video_duration(&self) -> anyhow::Result<f64> {
+        match std::process::Command::new(&self.ffprobe_file_path)
+            .args(&[
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+            ])
+            .output()
+        {
+            Ok(output) => {
+                let stdout = str::from_utf8(&output.stdout)?;
+                let json: Value = serde_json::from_str(stdout)?;
+                if let Some(duration) = json["format"]["duration"].as_str() {
+                    let duration: f64 = duration.parse()?;
+                    Ok(duration)
+                } else {
+                    Err(anyhow::anyhow!(
+                        "Failed to get duration from ffprobe output"
+                    ))
+                }
+            }
+            Err(e) => {
+                bail!("Failed to get video duration: {e}");
+            }
+        }
+    }
+
+    pub async fn process_video_to_pipe(&self, start_time: f64) -> anyhow::Result<Vec<u8>> {
+        let end_time = start_time + 5.0;
         let mut ffmpeg = Command::new(&self.binary_file_path)
             .args(&[
                 "-i",
                 self.video_file_path
                     .to_str()
                     .expect("invalid video file path"),
+                "-ss",
+                start_time.to_string().as_str(),
+                "-t",
+                end_time.to_string().as_str(), // 处理5秒的视频
+                "-c:v",
+                "libx264", // 使用H.264编码器
+                "-preset",
+                "ultrafast", // 设置为最快预设
+                "-crf",
+                "23", // 设置质量（范围：0-51，值越低质量越高）
                 "-f",
                 "mp4",
                 "-movflags",
@@ -398,6 +439,56 @@ impl VideoDecoder {
             .expect("Failed to read from ffmpeg stdout");
         tracing::info!("ffmpeg_stdout: {:?}", buffer.len());
         Ok(buffer)
+    }
+
+    pub async fn get_hls(
+        &self,
+        output_dir: impl AsRef<Path> + std::fmt::Debug,
+    ) -> anyhow::Result<()> {
+        tracing::debug!("output_dir: {output_dir:?}");
+        let start = Instant::now();
+        let output = Command::new(&self.binary_file_path)
+            .args(&[
+                "-i",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+                "-codec",
+                "copy",
+                "-start_number",
+                "0",
+                "-hls_time",
+                "10",
+                "-hls_list_size",
+                "0",
+                "-f",
+                "hls",
+                output_dir.as_ref().to_str().expect("invalid audio path"),
+            ])
+            .output()
+            .await;
+        let duration = start.elapsed();
+        tracing::debug!("get_hls duration: {duration:?}");
+        match output {
+            Ok(output) => {
+                if !output.status.success() {
+                    tracing::error!(
+                        "FFmpeg failed with stderr: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    bail!("FFmpeg failed with status: {}", output.status);
+                } else {
+                    tracing::debug!(
+                        "FFmpeg succeeded with stdout: {}",
+                        String::from_utf8_lossy(&output.stdout)
+                    );
+                    Ok(())
+                }
+            }
+            Err(e) => {
+                bail!("Failed to get_hls: {e}");
+            }
+        }
     }
 }
 
@@ -455,13 +546,16 @@ async fn test_save_video_segment() {
         let video_decoder = VideoDecoder::new(video_file).unwrap();
         let output_dir = "/Users/xddotcom/Downloads";
         let _result = video_decoder
-            .save_video_segment(
-                "test.mp4",
-                output_dir,
-                3000,
-                5000,
-            )
+            .save_video_segment("test.mp4", output_dir, 3000, 5000)
             .unwrap();
         // println!("{result:#?}");
     }
+}
+
+fn seconds_to_hms(seconds: f64) -> String {
+    let hours = (seconds / 3600.0).floor() as u64;
+    let minutes = ((seconds % 3600.0) / 60.0).floor() as u64;
+    let seconds = (seconds % 60.0).floor() as u64;
+
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
