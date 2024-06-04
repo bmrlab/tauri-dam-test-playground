@@ -51,20 +51,13 @@ where
                     )
                 })?;
 
-                // let _ = video_handler.get_mpd().await;
                 // let _ = video_handler.get_hls().await;
-                // let m3u8 = library
-                //     .artifacts_dir(&input.hash)
-                //     .join("out")
-                //     .join("index.m3u8");
-                // let m3u8_path = m3u8.to_str().unwrap();
 
                 match video_handler.get_video_duration().await {
                     Ok(duration) => Ok(json!({
                         "hash": input.hash,
                         "duration": duration,
                         "mimeType": asset_object_data.mime_type
-                        // "m3u8": m3u8_path.to_string()
                     })),
                     Err(e) => Err(rspc::Error::new(
                         rspc::ErrorCode::InternalServerError,

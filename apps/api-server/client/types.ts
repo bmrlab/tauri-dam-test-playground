@@ -128,6 +128,8 @@ export type AssetObjectCreatePayload = { materializedPath: string; name: string;
 
 export type AIModelStatus = { downloaded: boolean; downloadStatus: ModelDownloadStatus | null }
 
+export type TsRequestPayload = { hash: string; index: number }
+
 export type AcceptShareOutput = { fileList: string[] }
 
 export type FilePathMovePayload = { active: FilePathRequestPayload; target: FilePathRequestPayload | null }
@@ -153,5 +155,3 @@ export type RecommendRequestPayload = { assetObjectHash: string; timestamp: numb
 export type ExportInput = { types: AudioType[]; hash: string; path: string; fileName?: string | null }
 
 export type SearchResultPayload = { filePath: FilePath; metadata: SearchResultMetadata }
-
-export type TsRequestPayload = { hash: string; index: number }

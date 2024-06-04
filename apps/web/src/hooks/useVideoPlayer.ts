@@ -18,42 +18,12 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
   const { mutateAsync: getTs } = rspc.useMutation(['video.get_ts'])
 
   const handleUpdateend = async () => {
-    let remuxedSegments: any[] = []
-    let remuxedBytesLength = 0
-    let remuxedInitSegment: any = null
     transmuxerRef.current.on('data', (event: any) => {
-      console.log('handleUpdateend data event', event)
-      //   sourceBufferRef.current!.appendBuffer(new Uint8Array(event.data))
-      remuxedSegments.push(event)
-      remuxedBytesLength += event.data.byteLength
-      remuxedInitSegment = event.initSegment
+      sourceBufferRef.current!.appendBuffer(new Uint8Array(event.data))
       transmuxerRef.current.off('data')
     })
 
-    transmuxerRef.current.on('done', function (event: any) {
-      console.log('handleUpdateend done event', event)
-      let offset = 0
-      let bytes = new Uint8Array(remuxedInitSegment.byteLength + remuxedBytesLength)
-      bytes.set(remuxedInitSegment, offset)
-      offset += remuxedInitSegment.byteLength
-
-      for (let j = 0, i = offset; j < remuxedSegments.length; j++) {
-        bytes.set(remuxedSegments[j].data, i)
-        i += remuxedSegments[j].byteLength
-      }
-      remuxedSegments = []
-      remuxedBytesLength = 0
-      // 解析出转换后的mp4相关信息，与最终转换结果无关
-      const vjsParsed = muxjs.mp4.tools.inspect(bytes)
-      console.log('transmuxed', vjsParsed)
-      console.log('sourceBuffer', sourceBufferRef.current?.updating)
-      mediaSourceRef.current.duration += 10
-      sourceBufferRef.current?.appendBuffer(bytes)
-      transmuxerRef.current.off('done')
-    })
-
     if (segmentsRef.current.length == 0) {
-      console.log('sourceBufferRef.current?.updating', sourceBufferRef.current?.updating)
       mediaSourceRef.current.endOfStream()
     }
 
@@ -174,10 +144,7 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       hash,
     })
 
-    // segmentsRef.current = Array.from(new Array(Math.ceil(duration / 10))).map((_, i) => i)
-    segmentsRef.current = [0, 1]
-    console.log('segmentsRef.current', segmentsRef.current)
-
+    segmentsRef.current = Array.from(new Array(Math.ceil(duration / 10))).map((_, i) => i)
     // https://docs.videojs.com/tutorial-options.html
     const option = {
       controls: true,

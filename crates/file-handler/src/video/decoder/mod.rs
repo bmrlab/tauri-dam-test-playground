@@ -483,11 +483,15 @@ impl VideoDecoder {
                 "-start_number",
                 &ts_index.to_string(), // Start generating from the specified segment number
                 "-hls_time",
-                "5",
+                "10",
                 "-hls_list_size",
                 "1", // Only one segment in the list
                 "-f",
                 "hls",
+                "-muxdelay", // 设置starttime 每个视频10 * index秒开始
+                format!("{}", 5 * ts_index).to_string().as_str(),
+                "-vf",
+                "scale=426:-1", // 设置视频高度， 用于降低4k视频尺寸
                 format!(
                     "{}/index.m3u8",
                     output_dir.as_ref().to_str().expect("invalid output path")
@@ -507,10 +511,17 @@ impl VideoDecoder {
                     ts_index
                 );
 
+                let ffprobe_out = Command::new(&self.ffprobe_file_path)
+                    .args(&["-show_format", "-show_streams", &ts_file_path])
+                    .output()
+                    .await?;
+                let stdout = str::from_utf8(&ffprobe_out.stdout)?;
+
+                tracing::debug!("ffprobe_out: {:?}", stdout);
+
                 let file = tokio::fs::read(ts_file_path.clone()).await?;
                 // 再删除这个文件
                 let _ = tokio::fs::remove_file(ts_file_path).await?;
-
                 Ok(file)
             }
             Err(e) => {
