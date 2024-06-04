@@ -17,10 +17,16 @@ use crate::metadata::{
 
 use super::FRAME_FILE_EXTENSION;
 use anyhow::bail;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{path::Path, process::Stdio};
+use std::io::BufRead;
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 use std::{process::Output, str};
+use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::{io::AsyncReadExt, process::Command, time::Instant};
 
 #[cfg(feature = "ffmpeg-dylib")]
@@ -403,44 +409,6 @@ impl VideoDecoder {
         }
     }
 
-    pub async fn process_video_to_pipe(&self, start_time: f64) -> anyhow::Result<Vec<u8>> {
-        let end_time = start_time + 5.0;
-        let mut ffmpeg = Command::new(&self.binary_file_path)
-            .args(&[
-                "-i",
-                self.video_file_path
-                    .to_str()
-                    .expect("invalid video file path"),
-                "-ss",
-                start_time.to_string().as_str(),
-                "-t",
-                end_time.to_string().as_str(), // 处理5秒的视频
-                "-c:v",
-                "libx264", // 使用H.264编码器
-                "-preset",
-                "ultrafast", // 设置为最快预设
-                "-crf",
-                "23", // 设置质量（范围：0-51，值越低质量越高）
-                "-f",
-                "mp4",
-                "-movflags",
-                "frag_keyframe+empty_moov",
-                "-",
-            ])
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to start ffmpeg");
-
-        let mut ffmpeg_stdout = ffmpeg.stdout.take().expect("Failed to open stdout");
-        let mut buffer = Vec::new();
-        ffmpeg_stdout
-            .read_to_end(&mut buffer)
-            .await
-            .expect("Failed to read from ffmpeg stdout");
-        tracing::info!("ffmpeg_stdout: {:?}", buffer.len());
-        Ok(buffer)
-    }
-
     pub async fn get_hls(
         &self,
         output_dir: impl AsRef<Path> + std::fmt::Debug,
@@ -453,12 +421,14 @@ impl VideoDecoder {
                 self.video_file_path
                     .to_str()
                     .expect("invalid video file path"),
-                "-codec",
-                "copy",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
                 "-start_number",
                 "0",
                 "-hls_time",
-                "10",
+                "5",
                 "-hls_list_size",
                 "0",
                 "-f",
@@ -487,6 +457,64 @@ impl VideoDecoder {
             }
             Err(e) => {
                 bail!("Failed to get_hls: {e}");
+            }
+        }
+    }
+
+    pub async fn generate_ts(
+        &self,
+        ts_index: u32,
+        output_dir: impl AsRef<Path>,
+    ) -> anyhow::Result<Vec<u8>> {
+        let output = Command::new(&self.binary_file_path)
+            .args(&[
+                "-i",
+                self.video_file_path
+                    .to_str()
+                    .expect("invalid video file path"),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-ss",
+                format!("{}", ts_index * 10).to_string().as_str(), // Start time for the segment
+                "-t",
+                "10", // Duration of the segment
+                "-start_number",
+                &ts_index.to_string(), // Start generating from the specified segment number
+                "-hls_time",
+                "5",
+                "-hls_list_size",
+                "1", // Only one segment in the list
+                "-f",
+                "hls",
+                format!(
+                    "{}/index.m3u8",
+                    output_dir.as_ref().to_str().expect("invalid output path")
+                )
+                .as_str(),
+            ])
+            .output()
+            .await;
+
+        match output {
+            Ok(_) => {
+                // 成功
+                // 读取这个文件
+                let ts_file_path = format!(
+                    "{}/index{}.ts",
+                    output_dir.as_ref().to_str().expect("invalid output path"),
+                    ts_index
+                );
+
+                let file = tokio::fs::read(ts_file_path.clone()).await?;
+                // 再删除这个文件
+                let _ = tokio::fs::remove_file(ts_file_path).await?;
+
+                Ok(file)
+            }
+            Err(e) => {
+                bail!("FFmpeg failed generate_ts: {}", e);
             }
         }
     }

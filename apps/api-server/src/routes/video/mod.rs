@@ -2,12 +2,11 @@ pub mod task;
 
 use crate::CtxWithLibrary;
 use file_handler::video::VideoHandler;
-use prisma_lib::{asset_object, media_data::duration};
+use prisma_lib::asset_object;
 use rspc::{Router, RouterBuilder};
 use serde::Deserialize;
 use serde_json::json;
 use specta::Type;
-use uuid::Uuid;
 
 pub fn get_routes<TCtx>() -> RouterBuilder<TCtx>
 where
@@ -15,7 +14,7 @@ where
 {
     Router::new()
         .merge("tasks.", task::get_routes::<TCtx>())
-        .mutation("get_duration", |t| {
+        .mutation("get_video_info", |t| {
             #[derive(Deserialize, Type, Debug)]
             #[serde(rename_all = "camelCase")]
             struct VideoRequestPayload {
@@ -43,6 +42,8 @@ where
                     ));
                 };
 
+                let asset_object_data = asset_object_data.unwrap();
+
                 let video_handler = VideoHandler::new(&input.hash, &library).map_err(|e| {
                     rspc::Error::new(
                         rspc::ErrorCode::InternalServerError,
@@ -50,10 +51,20 @@ where
                     )
                 })?;
 
+                // let _ = video_handler.get_mpd().await;
+                // let _ = video_handler.get_hls().await;
+                // let m3u8 = library
+                //     .artifacts_dir(&input.hash)
+                //     .join("out")
+                //     .join("index.m3u8");
+                // let m3u8_path = m3u8.to_str().unwrap();
+
                 match video_handler.get_video_duration().await {
                     Ok(duration) => Ok(json!({
                         "hash": input.hash,
-                        "duration": duration
+                        "duration": duration,
+                        "mimeType": asset_object_data.mime_type
+                        // "m3u8": m3u8_path.to_string()
                     })),
                     Err(e) => Err(rspc::Error::new(
                         rspc::ErrorCode::InternalServerError,
@@ -62,34 +73,15 @@ where
                 }
             })
         })
-        .mutation("stream", |t| {
+        .mutation("get_ts", |t| {
             #[derive(Deserialize, Type, Debug)]
             #[serde(rename_all = "camelCase")]
-            struct StreamRequestPayload {
+            struct TsRequestPayload {
                 hash: String,
-                start_time: f64,
+                index: u32,
             }
-
-            t(|ctx: TCtx, input: StreamRequestPayload| async move {
+            t(|ctx: TCtx, input: TsRequestPayload| async move {
                 let library = ctx.library()?;
-                let asset_object_data = library
-                    .prisma_client()
-                    .asset_object()
-                    .find_unique(asset_object::UniqueWhereParam::HashEquals(
-                        input.hash.clone(),
-                    ))
-                    .exec()
-                    .await
-                    .map_err(|err| {
-                        rspc::Error::new(rspc::ErrorCode::InternalServerError, format!("{}", err))
-                    })?;
-
-                if let None = asset_object_data {
-                    return Err(rspc::Error::new(
-                        rspc::ErrorCode::InternalServerError,
-                        format!("asset no found"),
-                    ));
-                };
 
                 let video_handler =
                     VideoHandler::new(&input.hash.clone(), &library).map_err(|e| {
@@ -99,35 +91,12 @@ where
                         )
                     })?;
 
-                // let _ = video_handler.get_hls().await;
-
-                let data: Vec<u8> = video_handler
-                    .process_video_to_pipe(input.start_time)
-                    .await
-                    .expect("fail to process_video_to_pipe");
-
-                // let artifacts_dir = library.artifacts_dir(&input.hash.clone());
-                // let m3u8 = artifacts_dir.join("out").join("index.m3u8");
-
-                Ok(json!({
-                    "hash": input.hash,
-                    "data": data
-                }))
-            })
-        })
-        .mutation("get_ts", |t| {
-            #[derive(Deserialize, Type, Debug)]
-            #[serde(rename_all = "camelCase")]
-            struct TsRequestPayload {
-                hash: String,
-                file: String,
-            }
-            t(|ctx: TCtx, input: TsRequestPayload| async move {
-                let library = ctx.library()?;
-                let artifacts_dir = library.artifacts_dir(&input.hash.clone());
-                let file = tokio::fs::read(artifacts_dir.join("out").join(input.file))
-                    .await
-                    .expect("fail to read");
+                let file = video_handler.generate_ts(input.index).await.map_err(|e| {
+                    rspc::Error::new(
+                        rspc::ErrorCode::InternalServerError,
+                        format!("failed to get ts file: {}", e),
+                    )
+                })?;
 
                 Ok(json!({
                     "data": file

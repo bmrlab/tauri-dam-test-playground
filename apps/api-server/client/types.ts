@@ -43,9 +43,8 @@ export type Procedures = {
         { key: "p2p.reject_file_share", input: string, result: any } | 
         { key: "p2p.share", input: SharePayload, result: any } | 
         { key: "users.set", input: Auth, result: Auth } | 
-        { key: "video.get_duration", input: VideoRequestPayload, result: any } | 
         { key: "video.get_ts", input: TsRequestPayload, result: any } | 
-        { key: "video.stream", input: StreamRequestPayload, result: any } | 
+        { key: "video.get_video_info", input: VideoRequestPayload, result: any } | 
         { key: "video.tasks.cancel", input: TaskCancelRequestPayload, result: null } | 
         { key: "video.tasks.create", input: string, result: null } | 
         { key: "video.tasks.regenerate", input: TaskRedoRequestPayload, result: null },
@@ -56,6 +55,8 @@ export type Procedures = {
 export type SetModelPayload = { category: AIModelCategory; modelId: string }
 
 export type LibrarySettings = { title: string; appearanceTheme: LibrarySettingsThemeEnum; explorerLayout: LibrarySettingsLayoutEnum; models: LibraryModels }
+
+export type VideoRequestPayload = { hash: string }
 
 export type ModelArtifact = { url: string; checksum: string }
 
@@ -70,8 +71,6 @@ export type SharePayload = { fileIdList: number[]; peerId: string }
 export type LibraryStatusResult = { id: string | null; loaded: boolean; isBusy: boolean }
 
 export type VideoTaskListRequestPayload = { pagination: Pagination; filter: VideoTaskListRequestFilter }
-
-export type VideoRequestPayload = { hash: string }
 
 export type VideoTaskListRequestFilter = "all" | "processing" | "completed" | "failed" | "canceled" | "excludeCompleted" | { exitCode: number }
 
@@ -113,8 +112,6 @@ export type ConcreteModelType = "BLIP" | "CLIP" | "Moondream" | "OrtTextEmbeddin
 
 export type VideoWithTasksResult = { name: string; materializedPath: string; assetObject: AssetObject; tasks: FileHandlerTask[]; mediaData: MediaData | null }
 
-export type TsRequestPayload = { hash: string; file: string }
-
 export type FilePathRequestPayload = { id: number; isDir: boolean; materializedPath: string; name: string }
 
 export type LibraryModels = { MultiModalEmbedding: string; TextEmbedding: string; ImageCaption: string; AudioTranscript: string }
@@ -130,8 +127,6 @@ export type Result = { category: AIModelCategory; models: AIModelResult[] }
 export type AssetObjectCreatePayload = { materializedPath: string; name: string; localFullPath: string }
 
 export type AIModelStatus = { downloaded: boolean; downloadStatus: ModelDownloadStatus | null }
-
-export type StreamRequestPayload = { hash: string; startTime: number }
 
 export type AcceptShareOutput = { fileList: string[] }
 
@@ -158,3 +153,5 @@ export type RecommendRequestPayload = { assetObjectHash: string; timestamp: numb
 export type ExportInput = { types: AudioType[]; hash: string; path: string; fileName?: string | null }
 
 export type SearchResultPayload = { filePath: FilePath; metadata: SearchResultMetadata }
+
+export type TsRequestPayload = { hash: string; index: number }
