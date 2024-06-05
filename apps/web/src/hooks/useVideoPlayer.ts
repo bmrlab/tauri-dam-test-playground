@@ -1,9 +1,11 @@
 import { useCurrentLibrary } from '@/lib/library'
 import { rspc } from '@/lib/rspc'
+import { timeToSeconds } from '@/lib/utils'
 import muxjs from 'mux.js'
 import { MutableRefObject, useEffect, useRef } from 'react'
 import videojs from 'video.js'
 import type Player from 'video.js/dist/types/player'
+import useDebouncedCallback from './useDebouncedCallback'
 
 export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVideoElement | null>) => {
   const currentLibrary = useCurrentLibrary()
@@ -12,18 +14,34 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
   const sourceBufferRef = useRef<SourceBuffer | null>(null)
   const transmuxerRef = useRef<muxjs.mp4.Transmuxer | null>(null)
   const segmentsRef = useRef<number[]>([])
+  const loadedSegmentsRef = useRef<number[]>([])
   const lastTimeRef = useRef<number>(0)
+
+  const debounceSeeking = useDebouncedCallback((seekTimeSegment:number) => {
+    if (segmentsRef.current.includes(seekTimeSegment)) {
+      console.log('seeking所在', seekTimeSegment)
+      let index = segmentsRef.current.indexOf(seekTimeSegment)
+      let old = segmentsRef.current.slice(0, index)
+      segmentsRef.current.splice(0, index)
+      segmentsRef.current = [...segmentsRef.current, ...old, ...segmentsRef.current]
+      console.log('segmentsRef.current', old, segmentsRef.current)
+    }
+  }, 100)
 
   const { mutateAsync: getVideoInfo } = rspc.useMutation(['video.get_video_info'])
   const { mutateAsync: getTs } = rspc.useMutation(['video.get_ts'])
 
   const handleUpdateend = async () => {
     transmuxerRef.current!.on('data', (event: any) => {
-      sourceBufferRef.current!.appendBuffer(new Uint8Array(event.data))
+      try {
+        sourceBufferRef.current?.appendBuffer(new Uint8Array(event.data))
+      } catch (e) {
+        console.warn('sourceBuffer fail to append Buffer: ', e)
+      }
       transmuxerRef.current!.off('data')
     })
 
-    if (segmentsRef.current.length == 0) {
+    if (segmentsRef.current.length == 0 && !sourceBufferRef.current?.updating) {
       mediaSourceRef.current.endOfStream()
     }
 
@@ -33,8 +51,10 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
         hash: hash,
         index: item,
       })
-      transmuxerRef.current!.push(new Uint8Array(res.data))
-      transmuxerRef.current!.flush()
+      console.log('load segment:', item)
+      loadedSegmentsRef.current.push(item)
+      transmuxerRef.current?.push(new Uint8Array(res.data))
+      transmuxerRef.current?.flush()
     }
   }
 
@@ -48,8 +68,6 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
     var codecsArray = ['avc1.64001f', 'mp4a.40.2'] // todo 请求获取
 
     mediaSourceRef.current.addEventListener('sourceopen', function () {
-      mediaSourceRef.current.duration = 0
-
       sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(
         'video/mp4;codecs="' + codecsArray.join(',') + '"',
       )
@@ -93,8 +111,8 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       prepareSourceBuffer(bytes)
       transmuxerRef.current!.off('done')
     })
-    transmuxerRef.current.push(segment)
-    transmuxerRef.current.flush()
+    transmuxerRef.current?.push(segment)
+    transmuxerRef.current?.flush()
   }
 
   const onPlayerReady = async (mimeType: string) => {
@@ -108,7 +126,7 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       hash: hash,
       index: segment!,
     })
-
+    loadedSegmentsRef.current.push(segment!)
     transferFormat(res.data)
 
     // 监听
@@ -120,8 +138,14 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       }
     })
 
-    playerRef.current!.on('stalled', () => {
-      console.log('stalled')
+    playerRef.current!.on('seeking', async () => {
+      const tooltipElement = document.querySelector('.vjs-time-tooltip')
+      if (tooltipElement) {
+        const innerHTML = tooltipElement.innerHTML
+        const seekTime = timeToSeconds(innerHTML)
+        const seekTimeSegment = Math.ceil(seekTime / 10) - 1
+        debounceSeeking(seekTimeSegment)
+      }
     })
   }
 
@@ -130,7 +154,6 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
     const { duration, mimeType } = await getVideoInfo({
       hash,
     })
-
     segmentsRef.current = Array.from(new Array(Math.ceil(duration / 10))).map((_, i) => i)
     // https://docs.videojs.com/tutorial-options.html
     const option = {
@@ -161,8 +184,21 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
     init()
     return () => {
       if (playerRef.current) {
+        playerRef.current.off('timeupdate')
+        playerRef.current.off('stalled')
+        playerRef.current.off('seeking')
         playerRef.current.dispose()
       }
+      if (transmuxerRef.current) {
+        transmuxerRef.current?.off('data')
+        transmuxerRef.current?.off('done')
+        transmuxerRef.current = null
+      }
+      segmentsRef.current = []
+      loadedSegmentsRef.current = []
+      mediaSourceRef.current = new MediaSource()
+      sourceBufferRef.current = null
+      lastTimeRef.current = 0
     }
   }, [videoRef])
 }

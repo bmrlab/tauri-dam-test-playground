@@ -292,28 +292,6 @@ impl VideoHandler {
         video_decoder.get_video_duration().await
     }
 
-    pub async fn get_hls(&self) -> anyhow::Result<()> {
-        let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
-        let out_path = self.artifacts_dir.clone().join("out");
-        if let Err(e) = tokio::fs::create_dir_all(&out_path).await {
-            bail!("Failed to create output directory: {}", e);
-        }
-        let _ = video_decoder.get_hls(out_path.join("index.m3u8")).await;
-
-        // 再删除所有ts文件
-        let mut entries = tokio::fs::read_dir(&out_path).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if let Some(extension) = path.extension() {
-                if extension == "ts" {
-                    tokio::fs::remove_file(&path).await?;
-                    println!("Deleted {:?}", path);
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub async fn generate_ts(&self, ts_index: u32) -> anyhow::Result<Vec<u8>> {
         let video_decoder = decoder::VideoDecoder::new(&self.video_path)?;
         // let m3u8_file_path = self.artifacts_dir.clone().join("out").join("index.m3u8");

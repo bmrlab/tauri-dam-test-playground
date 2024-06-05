@@ -17,17 +17,11 @@ use crate::metadata::{
 
 use super::FRAME_FILE_EXTENSION;
 use anyhow::bail;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::BufRead;
-use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-};
-use std::{process::Output, str};
-use tokio::io::{self, AsyncBufReadExt, BufReader};
-use tokio::{io::AsyncReadExt, process::Command, time::Instant};
+use std::path::Path;
+use std::str;
+use tokio::process::Command;
 
 #[cfg(feature = "ffmpeg-dylib")]
 impl VideoDecoder {
@@ -409,63 +403,12 @@ impl VideoDecoder {
         }
     }
 
-    pub async fn get_hls(
-        &self,
-        output_dir: impl AsRef<Path> + std::fmt::Debug,
-    ) -> anyhow::Result<()> {
-        tracing::debug!("output_dir: {output_dir:?}");
-        let start = Instant::now();
-        let output = Command::new(&self.binary_file_path)
-            .args(&[
-                "-i",
-                self.video_file_path
-                    .to_str()
-                    .expect("invalid video file path"),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-start_number",
-                "0",
-                "-hls_time",
-                "5",
-                "-hls_list_size",
-                "0",
-                "-f",
-                "hls",
-                output_dir.as_ref().to_str().expect("invalid audio path"),
-            ])
-            .output()
-            .await;
-        let duration = start.elapsed();
-        tracing::debug!("get_hls duration: {duration:?}");
-        match output {
-            Ok(output) => {
-                if !output.status.success() {
-                    tracing::error!(
-                        "FFmpeg failed with stderr: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    );
-                    bail!("FFmpeg failed with status: {}", output.status);
-                } else {
-                    tracing::debug!(
-                        "FFmpeg succeeded with stdout: {}",
-                        String::from_utf8_lossy(&output.stdout)
-                    );
-                    Ok(())
-                }
-            }
-            Err(e) => {
-                bail!("Failed to get_hls: {e}");
-            }
-        }
-    }
-
     pub async fn generate_ts(
         &self,
         ts_index: u32,
         output_dir: impl AsRef<Path>,
     ) -> anyhow::Result<Vec<u8>> {
+        tracing::debug!("generate_ts ts_index:{ts_index:?}");
         let output = Command::new(&self.binary_file_path)
             .args(&[
                 "-i",
@@ -474,6 +417,8 @@ impl VideoDecoder {
                     .expect("invalid video file path"),
                 "-c:v",
                 "libx264",
+                "-crf",
+                "28",
                 "-preset",
                 "ultrafast",
                 "-ss",
@@ -502,27 +447,30 @@ impl VideoDecoder {
             .await;
 
         match output {
-            Ok(_) => {
-                // 成功
-                // 读取这个文件
-                let ts_file_path = format!(
-                    "{}/index{}.ts",
-                    output_dir.as_ref().to_str().expect("invalid output path"),
-                    ts_index
-                );
+            Ok(ffmpeg_output) => {
+                if ffmpeg_output.status.success() {
+                    // 成功
+                    // 读取这个文件
+                    let ts_file_path = format!(
+                        "{}/index{}.ts",
+                        output_dir.as_ref().to_str().expect("invalid output path"),
+                        ts_index
+                    );
 
-                let ffprobe_out = Command::new(&self.ffprobe_file_path)
-                    .args(&["-show_format", "-show_streams", &ts_file_path])
-                    .output()
-                    .await?;
-                let stdout = str::from_utf8(&ffprobe_out.stdout)?;
+                    let ffprobe_out = Command::new(&self.ffprobe_file_path)
+                        .args(&["-show_format", "-show_streams", &ts_file_path])
+                        .output()
+                        .await?;
 
-                tracing::debug!("ffprobe_out: {:?}", stdout);
+                    tracing::debug!("ffprobe: {}", String::from_utf8_lossy(&ffprobe_out.stdout));
 
-                let file = tokio::fs::read(ts_file_path.clone()).await?;
-                // 再删除这个文件
-                let _ = tokio::fs::remove_file(ts_file_path).await?;
-                Ok(file)
+                    let file = tokio::fs::read(ts_file_path.clone()).await?;
+                    // 再删除这个文件
+                    let _ = tokio::fs::remove_file(ts_file_path).await?;
+                    Ok(file)
+                } else {
+                    bail!("FFmpeg failed generate_ts");
+                }
             }
             Err(e) => {
                 bail!("FFmpeg failed generate_ts: {}", e);
@@ -589,12 +537,4 @@ async fn test_save_video_segment() {
             .unwrap();
         // println!("{result:#?}");
     }
-}
-
-fn seconds_to_hms(seconds: f64) -> String {
-    let hours = (seconds / 3600.0).floor() as u64;
-    let minutes = ((seconds % 3600.0) / 60.0).floor() as u64;
-    let seconds = (seconds % 60.0).floor() as u64;
-
-    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }

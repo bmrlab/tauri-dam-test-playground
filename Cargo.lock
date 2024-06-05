@@ -2468,7 +2468,6 @@ dependencies = [
  "prisma-client-rust",
  "prisma-lib",
  "qdrant-client",
- "regex",
  "serde",
  "serde_json",
  "strum",
