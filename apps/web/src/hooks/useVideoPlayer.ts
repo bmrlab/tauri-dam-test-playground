@@ -10,7 +10,7 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
   const playerRef = useRef<Player | null>(null)
   const mediaSourceRef = useRef<MediaSource>(new MediaSource())
   const sourceBufferRef = useRef<SourceBuffer | null>(null)
-  const transmuxerRef = useRef<any>(null)
+  const transmuxerRef = useRef<muxjs.mp4.Transmuxer | null>(null)
   const segmentsRef = useRef<number[]>([])
   const lastTimeRef = useRef<number>(0)
 
@@ -18,9 +18,9 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
   const { mutateAsync: getTs } = rspc.useMutation(['video.get_ts'])
 
   const handleUpdateend = async () => {
-    transmuxerRef.current.on('data', (event: any) => {
+    transmuxerRef.current!.on('data', (event: any) => {
       sourceBufferRef.current!.appendBuffer(new Uint8Array(event.data))
-      transmuxerRef.current.off('data')
+      transmuxerRef.current!.off('data')
     })
 
     if (segmentsRef.current.length == 0) {
@@ -33,8 +33,8 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
         hash: hash,
         index: item,
       })
-      transmuxerRef.current.push(new Uint8Array(res.data))
-      transmuxerRef.current.flush()
+      transmuxerRef.current!.push(new Uint8Array(res.data))
+      transmuxerRef.current!.flush()
     }
   }
 
@@ -71,11 +71,10 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       remuxedSegments.push(event)
       remuxedBytesLength += event.data.byteLength
       remuxedInitSegment = event.initSegment
-      transmuxerRef.current.off('data')
+      transmuxerRef.current!.off('data')
     })
 
     transmuxerRef.current.on('done', function () {
-      console.log('done')
       let offset = 0
       let bytes = new Uint8Array(remuxedInitSegment.byteLength + remuxedBytesLength)
       bytes.set(remuxedInitSegment, offset)
@@ -92,7 +91,7 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       console.log('transmuxed', vjsParsed)
       // （3.准备资源数据，添加到标签的视频流中
       prepareSourceBuffer(bytes)
-      transmuxerRef.current.off('done')
+      transmuxerRef.current!.off('done')
     })
     transmuxerRef.current.push(segment)
     transmuxerRef.current.flush()

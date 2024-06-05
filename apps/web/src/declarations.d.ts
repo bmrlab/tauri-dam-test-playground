@@ -32,7 +32,7 @@ declare module 'mux.js' {
     class Transmuxer {
       constructor(options?: TransmuxerOptions)
       on(event: string, callback: (data?: any) => void): void
-      off(event: string, callback: (data?: any) => void): void
+      off(event: string): void
       push(data: Uint8Array): void
       flush(): void
       reset(): void
@@ -44,7 +44,7 @@ declare module 'mux.js' {
     }
 
     namespace tools {
-      function inspect(bytes: Uint8Array): any; // todo
+      function inspect(bytes: Uint8Array): any // todo
     }
   }
 }
