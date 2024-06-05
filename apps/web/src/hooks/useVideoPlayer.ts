@@ -38,13 +38,10 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
     }
   }
 
-  const prepareSourceBuffer = (combined: boolean, outputType: string, bytes: Uint8Array) => {
+  const prepareSourceBuffer = (bytes: Uint8Array) => {
     if (!videoRef.current) {
       return
     }
-    console.log('prepareSourceBuffer', combined, outputType, bytes)
-    // videoRef.current.controls = false
-    // videoRef.current.volume = 1
     mediaSourceRef.current = new MediaSource()
     videoRef.current.src = URL.createObjectURL(mediaSourceRef.current)
 
@@ -66,19 +63,11 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
 
     transmuxerRef.current = new muxjs.mp4.Transmuxer()
 
-    // 注意：接收无音频ts文件，OutputType设置为'video'，并且设置combined为 'false',
-    //      在监听data事件的时候，控置转换流的类型
-    const combined = true
-    const outputType = 'audio'
-
     let remuxedSegments: any[] = []
     let remuxedBytesLength = 0
     let remuxedInitSegment: any = null
 
-    transmuxerRef.current.on('data', function (event: any) {
-      console.log('data event: ', event.type, event)
-      // event.type 有video和audio两种类型的数据流， 一种音频流，视频流， 不限制就只混合。
-      // if (event.type === outputType) {  }
+    transmuxerRef.current.on('data', function (event) {
       remuxedSegments.push(event)
       remuxedBytesLength += event.data.byteLength
       remuxedInitSegment = event.initSegment
@@ -101,9 +90,8 @@ export const useVideoPlayer = (hash: string, videoRef: MutableRefObject<HTMLVide
       // 解析出转换后的mp4相关信息，与最终转换结果无关
       const vjsParsed = muxjs.mp4.tools.inspect(bytes)
       console.log('transmuxed', vjsParsed)
-
       // （3.准备资源数据，添加到标签的视频流中
-      prepareSourceBuffer(combined, outputType, bytes)
+      prepareSourceBuffer(bytes)
       transmuxerRef.current.off('done')
     })
     transmuxerRef.current.push(segment)
