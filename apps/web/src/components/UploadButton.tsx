@@ -18,7 +18,7 @@ const TauriUploadButton: React.FC<
       filters: [
         {
           name: 'Video',
-          extensions: ['mp4', 'mov', 'avi', 'mkv'],
+          extensions: ['avi', 'wmv', 'mkv', 'mp4', 'mov', 'rm', 'mpg', 'rmvb'],
         },
         {
           name: 'Image',

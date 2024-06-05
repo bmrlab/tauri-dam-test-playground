@@ -457,12 +457,12 @@ impl VideoDecoder {
                         ts_index
                     );
 
-                    let ffprobe_out = Command::new(&self.ffprobe_file_path)
-                        .args(&["-show_format", "-show_streams", &ts_file_path])
-                        .output()
-                        .await?;
+                    // let ffprobe_out = Command::new(&self.ffprobe_file_path)
+                    //     .args(&["-show_format", "-show_streams", &ts_file_path])
+                    //     .output()
+                    //     .await?;
 
-                    tracing::debug!("ffprobe: {}", String::from_utf8_lossy(&ffprobe_out.stdout));
+                    // tracing::debug!("ffprobe: {}", String::from_utf8_lossy(&ffprobe_out.stdout));
 
                     let file = tokio::fs::read(ts_file_path.clone()).await?;
                     // 再删除这个文件
