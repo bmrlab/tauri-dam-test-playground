@@ -1,11 +1,14 @@
 mod assets;
-mod tasks;
-mod search;
 mod audio;
 mod libraries;
 pub(crate) mod p2p;
+mod search;
+mod storage;
+mod tasks;
 mod users;
 mod video;
+
+pub use storage::location::*;
 
 use crate::CtxWithLibrary;
 use rspc::Router;
@@ -30,6 +33,7 @@ where
         .merge("audio.", audio::get_routes::<TCtx>())
         .merge("libraries.", libraries::get_routes::<TCtx>())
         .merge("p2p.", p2p::get_routes::<TCtx>())
+        .merge("storage.", storage::get_routes::<TCtx>())
         .query("version", |t| {
             t(|_ctx, _input: ()| env!("CARGO_PKG_VERSION"))
         })

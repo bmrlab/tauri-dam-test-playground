@@ -5,7 +5,8 @@ use crate::{
 };
 use qdrant_client::qdrant::PointStruct;
 use serde_json::json;
-use std::{io::Write, path::PathBuf};
+use std::path::PathBuf;
+use storage::prelude::*;
 
 impl VideoHandler {
     pub(crate) fn get_frames_dir(&self) -> anyhow::Result<PathBuf> {
@@ -38,14 +39,14 @@ impl VideoHandler {
         self.get_embedding_from_file(embedding_path)
     }
 
-    pub fn list_frame_paths(&self) -> anyhow::Result<Vec<PathBuf>> {
+    pub async fn list_frame_paths(&self) -> anyhow::Result<Vec<PathBuf>> {
         let frames_dir = self.get_frames_dir()?;
-
-        let frame_paths = std::fs::read_dir(frames_dir)?
-            .filter_map(|res| res.map(|e| e.path()).ok())
+        let frame_paths = self
+            .read_dir(frames_dir)
+            .await?
+            .into_iter()
             .filter(|v| v.extension() == Some(std::ffi::OsStr::new(FRAME_FILE_EXTENSION)))
-            .collect::<Vec<_>>();
-
+            .collect();
         Ok(frame_paths)
     }
 
@@ -79,7 +80,7 @@ impl VideoHandler {
     pub(crate) async fn save_frame_content_embedding(&self) -> anyhow::Result<()> {
         // 这里还是从本地读取所有图片
         // 因为一个视频包含的帧数可能非常多，从 sqlite 读取反而麻烦了
-        let frame_paths = self.list_frame_paths()?;
+        let frame_paths = self.list_frame_paths().await?;
         let (multi_modal_embedding, _) = self.multi_modal_embedding()?;
 
         for path in frame_paths {
@@ -91,8 +92,8 @@ impl VideoHandler {
                     .process_single(path)
                     .await?;
 
-                let mut file = std::fs::File::create(embedding_path)?;
-                file.write_all(serde_json::to_string(&embedding)?.as_bytes())?;
+                self.write(embedding_path, serde_json::to_string(&embedding)?.into())
+                    .await?;
             }
 
             self.save_db_single_frame_content_embedding(timestamp)

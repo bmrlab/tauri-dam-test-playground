@@ -11,12 +11,14 @@ pub use model::*;
 use ndarray::{Array1, Axis};
 use ort::Session;
 use std::path::{Path, PathBuf};
+use storage_macro::Storage;
 use tokenizers::tokenizer::Tokenizer;
 use utils::normalize;
 
 pub mod model;
 mod preprocess;
 
+#[derive(Storage)]
 pub struct CLIP {
     image_model: Option<Session>,
     text_model: Option<Session>,
@@ -75,7 +77,7 @@ impl CLIP {
         // resources_dir: impl AsRef<Path>,
         // model: model::CLIPModel,
         image_model_path: impl AsRef<Path>,
-        text_model_path:impl AsRef<Path>,
+        text_model_path: impl AsRef<Path>,
         text_tokenizer_vocab_path: impl AsRef<Path>,
         model_type: model::CLIPModel,
     ) -> anyhow::Result<Self> {
@@ -141,8 +143,9 @@ impl CLIP {
         &self,
         image_path: impl AsRef<Path>,
     ) -> anyhow::Result<CLIPEmbedding> {
-        let image = preprocess::read_image(image_path)?;
-        self.get_image_embedding_from_image(&image).await
+        let image_data = self.read(image_path.as_ref().to_path_buf()).await?;
+        let image = image::load_from_memory(image_data.to_vec().as_slice())?;
+        self.get_image_embedding_from_image(&image.to_rgb8()).await
     }
 
     pub async fn get_image_embedding_from_image(

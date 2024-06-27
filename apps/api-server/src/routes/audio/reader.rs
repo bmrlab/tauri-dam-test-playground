@@ -1,9 +1,11 @@
 use ai::AudioTranscriptOutput;
+use async_trait::async_trait;
 use csv::WriterBuilder;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::Write;
 use std::path::PathBuf;
+use storage_macro::Storage;
 use tracing::debug;
 
 // 检查 content 是否为空，如何为空直接返回空字符串
@@ -64,7 +66,7 @@ impl AudioData {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Storage)]
 pub struct AudioReader {
     content: Vec<AudioData>,
 }
@@ -85,7 +87,15 @@ impl AudioReader {
     /// 返回 AudioData
     fn parse(path: PathBuf) -> anyhow::Result<Vec<AudioData>> {
         debug!("audio parse path {}", path.display());
-        let content = std::fs::read_to_string(path)?;
+
+        let storage = get_current_fs_storage!().map_err(|e| {
+            rspc::Error::new(
+                rspc::ErrorCode::InternalServerError,
+                format!("failed to get current storage: {}", e),
+            )
+        })?;
+
+        let content = storage.read_to_string(path)?;
         let raw_content = serde_json::from_str::<AudioTranscriptOutput>(&content)?;
 
         Ok(raw_content

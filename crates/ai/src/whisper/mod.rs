@@ -8,10 +8,11 @@ use std::convert::AsRef;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use storage_macro::Storage;
 use tracing::warn;
-
 mod language;
 
+#[derive(Storage)]
 pub struct Whisper {
     binary_path: PathBuf,
     model_path: PathBuf,
@@ -149,6 +150,8 @@ impl Whisper {
     ) -> anyhow::Result<WhisperResult> {
         let params = params.unwrap_or_default();
         let output_file_path = audio_file_path.as_ref().with_file_name("transcript");
+        let actual_audio_path = self.get_actual_path(audio_file_path.as_ref().to_path_buf())?;
+        let actual_output_path = self.get_actual_path(output_file_path.as_path().to_path_buf())?;
 
         // let download = file_downloader::FileDownload::new(file_downloader::FileDownloadConfig {
         //     resources_dir: self.resources_dir.clone(),
@@ -168,12 +171,12 @@ impl Whisper {
             "-l",
             "auto",
             "-f",
-            audio_file_path.as_ref().to_str().unwrap(),
+            actual_audio_path.to_str().unwrap(),
             "-m",
             &model_path,
             "-oj",
             "-of",
-            output_file_path.to_str().unwrap(),
+            actual_output_path.to_str().unwrap(),
         ];
 
         if params.enable_translate {
@@ -200,7 +203,7 @@ impl Whisper {
         // result may contain invalid utf-8
         // TODO maybe we should also remove replacement character?
         let mut buf: Vec<u8> = vec![];
-        let mut file = std::fs::File::open(output_file_path.with_extension("json"))?;
+        let mut file = std::fs::File::open(actual_output_path.with_extension("json"))?;
         file.read_to_end(&mut buf)?;
         let transcript = String::from_utf8_lossy(&buf);
         let transcript = transcript.to_string();
@@ -212,7 +215,7 @@ impl Whisper {
         let transcription: Vec<WhisperTranscription> = serde_json::from_value(transcription)?;
 
         // delete json output file
-        if let Err(e) = std::fs::remove_file(output_file_path.with_extension("json")) {
+        if let Err(e) = std::fs::remove_file(actual_output_path.with_extension("json")) {
             warn!("failed to remove json output: {}", e);
         };
 

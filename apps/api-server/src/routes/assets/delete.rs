@@ -1,7 +1,9 @@
 use crate::{file_handler::get_file_handler, CtxWithLibrary};
+use global_variable::get_current_fs_storage;
 use prisma_client_rust::{Direction, QueryError};
 use prisma_lib::{asset_object, file_path};
 use std::{collections::HashSet, sync::Arc};
+use storage::prelude::*;
 use tokio::sync::Mutex;
 use tracing::error;
 
@@ -166,14 +168,22 @@ pub async fn delete_file_path_and_unlinked_asset_objects(
             )
         })?;
 
+    let storage = get_current_fs_storage!().map_err(|e| {
+        rspc::Error::new(
+            rspc::ErrorCode::InternalServerError,
+            format!("failed to get current storage: {}", e),
+        )
+    })?;
+
     // delete from fs
     deleted_asset_objects_clone
         .lock()
         .await
         .iter()
         .for_each(|data| {
-            let file_path = library.file_path(&data.hash);
-            if let Err(e) = std::fs::remove_file(&file_path) {
+            let file_path = library.relative_file_path(&data.hash);
+
+            if let Err(e) = storage.remove_file(file_path.clone()) {
                 error!("failed to delete file({}): {}", file_path.display(), e);
             };
         });

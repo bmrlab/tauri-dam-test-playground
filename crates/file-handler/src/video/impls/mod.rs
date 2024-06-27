@@ -3,8 +3,10 @@ pub mod audio;
 pub mod caption;
 pub mod frame;
 
+use storage::prelude::*;
+
 use super::VideoHandler;
-use std::{io::Write, path::Path};
+use std::path::Path;
 
 pub(self) fn get_frame_timestamp_from_path(
     path: impl AsRef<std::path::Path>,
@@ -39,14 +41,16 @@ impl VideoHandler {
             .process_single(text.to_string())
             .await?;
 
-        let mut file = std::fs::File::create(path)?;
-        file.write_all(serde_json::to_string(&embedding)?.as_bytes())?;
-
+        self.write(
+            path.as_ref().to_path_buf(),
+            serde_json::to_string(&embedding)?.into(),
+        )
+        .await?;
         Ok(())
     }
 
     pub fn get_embedding_from_file(&self, path: impl AsRef<Path>) -> anyhow::Result<Vec<f32>> {
-        let embedding = std::fs::read_to_string(path)?;
+        let embedding: String = self.read_to_string(path.as_ref().to_path_buf())?;
         serde_json::from_str::<Vec<f32>>(&embedding).map_err(|e| anyhow::anyhow!(e))
     }
 }

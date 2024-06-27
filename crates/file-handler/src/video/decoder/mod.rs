@@ -6,6 +6,7 @@ mod transcode;
 mod utils;
 
 #[cfg(feature = "ffmpeg-dylib")]
+#[derive(Storage)]
 pub struct VideoDecoder {
     video_file_path: std::path::PathBuf,
 }
@@ -17,16 +18,18 @@ use crate::metadata::{
 
 use super::FRAME_FILE_EXTENSION;
 use anyhow::bail;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::Path;
-use std::str;
+use std::{path::Path, process::Stdio};
+use storage::add_tmp_suffix_to_path;
+use storage_macro::*;
 use tokio::process::Command;
 
 #[cfg(feature = "ffmpeg-dylib")]
 impl VideoDecoder {
     pub fn new(filename: impl AsRef<Path>) -> Self {
-        debug!("Successfully opened {}", filename.as_ref().display());
+        tracing::debug!("Successfully opened {}", filename.as_ref().display());
 
         let decoder = Self {
             video_file_path: filename.as_ref().to_path_buf(),
@@ -85,6 +88,7 @@ impl From<&RawProbeStreamOutput> for AudioMetadata {
 }
 
 #[cfg(feature = "ffmpeg-binary")]
+#[derive(Storage)]
 pub struct VideoDecoder {
     video_file_path: std::path::PathBuf,
     binary_file_path: std::path::PathBuf,
@@ -190,8 +194,12 @@ impl VideoDecoder {
                 "1",
                 "-compression_level",
                 "9",
-                thumbnail_path.as_ref().to_string_lossy().as_ref(),
+                "-f",
+                "image2pipe",
+                "pipe:1",
             ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .output()
         {
             Ok(output) => {
@@ -201,7 +209,8 @@ impl VideoDecoder {
                         String::from_utf8_lossy(&output.stderr)
                     );
                 }
-
+                self.write(thumbnail_path.as_ref().to_path_buf(), output.stdout.into())
+                    .await?;
                 Ok(())
             }
             Err(e) => {
@@ -212,6 +221,9 @@ impl VideoDecoder {
 
     pub async fn save_video_frames(&self, frames_dir: impl AsRef<Path>) -> anyhow::Result<()> {
         // 单独提取 timestamp 为 0 的帧
+        let frame_0_path = frames_dir
+            .as_ref()
+            .join(format!("0.{}", FRAME_FILE_EXTENSION));
         match std::process::Command::new(&self.binary_file_path)
             .args([
                 "-i",
@@ -224,12 +236,12 @@ impl VideoDecoder {
                 "vfr",
                 "-compression_level",
                 "9",
-                frames_dir
-                    .as_ref()
-                    .join(format!("0.{}", FRAME_FILE_EXTENSION))
-                    .to_str()
-                    .expect("invalid frames dir path"),
+                "-f",
+                "image2pipe",
+                "pipe:1",
             ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .output()
         {
             Ok(output) => {
@@ -239,12 +251,14 @@ impl VideoDecoder {
                         String::from_utf8_lossy(&output.stderr)
                     );
                 }
+                self.write(frame_0_path, output.stdout.into()).await?;
             }
             Err(e) => {
                 bail!("Failed to save video frames: {e}");
             }
         }
 
+        let actual_frame_dir = self.get_actual_path(frames_dir.as_ref().to_path_buf())?;
         match std::process::Command::new(&self.binary_file_path)
             .args([
                 "-i",
@@ -257,9 +271,8 @@ impl VideoDecoder {
                 "vfr",
                 "-compression_level",
                 "9",
-                frames_dir
-                    .as_ref()
-                    .join(format!("%d000.{}", FRAME_FILE_EXTENSION))
+                actual_frame_dir
+                    .join(format!("%d000-tmp.{}", FRAME_FILE_EXTENSION))
                     .to_str()
                     .expect("invalid frames dir path"),
             ])
@@ -272,6 +285,7 @@ impl VideoDecoder {
                         String::from_utf8_lossy(&output.stderr)
                     );
                 }
+                self.save_batch_framer(frames_dir).await?;
             }
             Err(e) => {
                 bail!("Failed to save video frames: {e}");
@@ -281,7 +295,32 @@ impl VideoDecoder {
         Ok(())
     }
 
+    async fn save_batch_framer(&self, frames_dir: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+        let actual_frame_dir = self.get_actual_path(frames_dir.as_ref().to_path_buf())?;
+        for entry in std::fs::read_dir(actual_frame_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(file_name) = path.file_name() {
+                    if let Some(name_str) = file_name.to_str() {
+                        if name_str.contains("-tmp") {
+                            let new_name = name_str.replace("-tmp", "");
+                            let new_path = frames_dir.as_ref().join(new_name);
+                            self.write(new_path, std::fs::read(path.clone())?.into())
+                                .await?;
+                            std::fs::remove_file(path)?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn save_video_audio(&self, audio_path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let actual_path = self.get_actual_path(audio_path.as_ref().to_path_buf())?;
+        let tmp_path = add_tmp_suffix_to_path!(&actual_path);
+        tracing::debug!("tmp_path: {:?}", tmp_path);
         match std::process::Command::new(&self.binary_file_path)
             .args([
                 "-i",
@@ -294,7 +333,7 @@ impl VideoDecoder {
                 "16000",
                 "-ac",
                 "1",
-                audio_path.as_ref().to_str().expect("invalid audio path"),
+                tmp_path.to_str().expect("invalid audio path"),
             ])
             .output()
         {
@@ -304,6 +343,24 @@ impl VideoDecoder {
                         "Failed to save video frames: {}",
                         String::from_utf8_lossy(&output.stderr)
                     );
+                }
+
+                let content = std::fs::read(tmp_path.clone());
+                match content {
+                    Ok(data) => {
+                        if let Ok(()) = self
+                            .write(audio_path.as_ref().to_path_buf(), data.into())
+                            .await
+                        {
+                            // 删除临时文件
+                            if let Err(e) = std::fs::remove_file(tmp_path) {
+                                tracing::info!("Failed to remove tmp audio file: {:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        bail!("Failed to save video audio: {e}");
+                    }
                 }
             }
             Err(e) => {
@@ -386,7 +443,7 @@ impl VideoDecoder {
             .output()
         {
             Ok(output) => {
-                let stdout = str::from_utf8(&output.stdout)?;
+                let stdout = std::str::from_utf8(&output.stdout)?;
                 let json: Value = serde_json::from_str(stdout)?;
                 if let Some(duration) = json["format"]["duration"].as_str() {
                     let duration: f64 = duration.parse()?;

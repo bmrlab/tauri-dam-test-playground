@@ -7,7 +7,8 @@ use crate::{
 };
 use qdrant_client::qdrant::PointStruct;
 use serde_json::{json, Value};
-use std::{io::Write, path::PathBuf};
+use std::path::PathBuf;
+use storage::prelude::*;
 use tracing::{debug, error};
 
 impl VideoHandler {
@@ -27,7 +28,8 @@ impl VideoHandler {
 
     pub fn get_frame_caption(&self, timestamp: i64) -> anyhow::Result<String> {
         let path = self.get_frame_caption_path(timestamp)?;
-        let json_string: Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+        let content_str = self.read_to_string(path)?;
+        let json_string: Value = serde_json::from_str(&content_str)?;
         let caption = json_string["caption"]
             .as_str()
             .ok_or(anyhow::anyhow!("no caption found in frame caption file"))?;
@@ -59,7 +61,7 @@ impl VideoHandler {
     /// - To prisma `VideoFrameCaption` model
     pub(crate) async fn save_frames_caption(&self) -> anyhow::Result<()> {
         let (image_caption, _) = self.image_caption()?;
-        let frame_paths = self.list_frame_paths()?;
+        let frame_paths = self.list_frame_paths().await?;
         for path in frame_paths {
             debug!("get_frames_caption: {:?}", path);
 
@@ -75,24 +77,24 @@ impl VideoHandler {
                 .process_single(path)
                 .await?;
 
-            debug!("caption: {:?}", caption);
             // write into file
-            let mut file = std::fs::File::create(caption_path)?;
-            // here write as a json file, so that we can easily check the if file result is valid
-            file.write_all(
+
+            self.write(
+                caption_path,
                 json!({
                     "caption": caption
                 })
                 .to_string()
-                .as_bytes(),
-            )?;
+                .into(),
+            )
+            .await?;
         }
 
         Ok(())
     }
 
     pub(crate) async fn save_frame_caption_embedding(&self) -> anyhow::Result<()> {
-        let frame_paths = self.list_frame_paths()?;
+        let frame_paths = self.list_frame_paths().await?;
 
         for path in frame_paths {
             debug!("save_frame_caption_embedding: {:?}", path,);

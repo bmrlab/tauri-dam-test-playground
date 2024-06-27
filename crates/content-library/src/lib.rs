@@ -1,3 +1,4 @@
+use global_variable::set_current;
 use prisma_lib::PrismaClient;
 use qdrant::create_qdrant_server;
 pub use qdrant::{make_sure_collection_created, QdrantCollectionInfo, QdrantServerInfo};
@@ -8,10 +9,10 @@ use std::{
 };
 use vector_db::QdrantServer;
 
+pub mod bundle;
+mod database;
 mod port;
 mod qdrant;
-mod database;
-pub mod bundle;
 
 #[derive(Clone, Debug)]
 pub struct Library {
@@ -55,6 +56,16 @@ impl Library {
         artifacts_dir_with_shard
     }
 
+    pub fn relative_artifacts_path(&self, file_hash: &str) -> PathBuf {
+        self.relative_artifacts_dir()
+            .join(get_shard_hex(file_hash))
+            .join(file_hash)
+    }
+
+    pub fn relative_artifacts_dir(&self) -> PathBuf {
+        PathBuf::from("artifacts")
+    }
+
     /// Get the file path in library for a given file hash
     ///
     /// For now, `file_path` is something like `%LIBRARY_FILES_DIR%/%SHARD_ID%/%FILE_HASH%`,
@@ -67,6 +78,17 @@ impl Library {
         }
 
         files_dir_with_shard.join(file_hash)
+    }
+
+    pub fn relative_file_dir(&self) -> PathBuf {
+        PathBuf::from("files")
+    }
+
+    /// opendal will create directory iteratively if not exist
+    pub fn relative_file_path(&self, file_hash: &str) -> PathBuf {
+        self.relative_file_dir()
+            .join(get_shard_hex(file_hash))
+            .join(file_hash)
     }
 }
 
@@ -86,9 +108,13 @@ pub async fn load_library(
 
     let qdrant_server = create_qdrant_server(qdrant_dir).await?;
 
+    let dir = library_dir.to_str().ok_or(())?.to_string();
+
+    set_current!(library_id.to_string(), dir);
+
     let library = Library {
         id: library_id.to_string(),
-        dir: library_dir,
+        dir: library_dir.clone(),
         files_dir,
         artifacts_dir,
         prisma_client,

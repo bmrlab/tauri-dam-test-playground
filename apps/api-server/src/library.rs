@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::PathBuf;
+use storage::S3Config;
 use strum_macros::{Display, EnumString};
 
 // libraries/[uuid as library id]/settings.json
@@ -50,6 +51,8 @@ pub struct LibrarySettings {
     pub appearance_theme: LibrarySettingsThemeEnum,
     pub explorer_layout: LibrarySettingsLayoutEnum,
     pub models: LibraryModels,
+    pub always_delete_local_file_after_upload: bool,
+    pub s3_config: Option<S3Config>,
 }
 
 impl<'de> Deserialize<'de> for LibrarySettings {
@@ -79,6 +82,11 @@ impl<'de> Deserialize<'de> for LibrarySettings {
                 .unwrap_or(LibrarySettingsLayoutEnum::Grid),
             models: serde_json::from_value::<LibraryModels>(value["models"].to_owned())
                 .unwrap_or_default(),
+            always_delete_local_file_after_upload: value["alwaysDeleteLocalFileAfterUpload"]
+                .as_bool()
+                .unwrap_or(false),
+            s3_config: serde_json::from_value::<Option<S3Config>>(value["s3Config"].to_owned())
+                .unwrap_or(None),
         };
         Ok(settings)
     }
@@ -91,6 +99,8 @@ impl Default for LibrarySettings {
             appearance_theme: LibrarySettingsThemeEnum::Light,
             explorer_layout: LibrarySettingsLayoutEnum::List,
             models: Default::default(),
+            always_delete_local_file_after_upload: false,
+            s3_config: None,
         }
     }
 }

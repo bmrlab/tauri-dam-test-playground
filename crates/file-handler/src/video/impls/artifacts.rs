@@ -1,6 +1,8 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::bail;
+use async_recursion::async_recursion;
+use storage::*;
 use uuid::Uuid;
 
 use crate::{
@@ -10,7 +12,7 @@ use crate::{
 
 impl VideoHandler {
     fn get_artifacts_settings(&self) -> ArtifactsSettings {
-        match std::fs::read_to_string(self.artifacts_dir().join(ARTIFACTS_SETTINGS_FILE_NAME)) {
+        match self.read_to_string(self.artifacts_dir().join(ARTIFACTS_SETTINGS_FILE_NAME)) {
             std::result::Result::Ok(json_content) => {
                 if let std::result::Result::Ok(settings) =
                     serde_json::from_str::<ArtifactsSettings>(&json_content)
@@ -24,12 +26,15 @@ impl VideoHandler {
         }
     }
 
-    fn set_artifacts_settings(&self, artifacts_settings: ArtifactsSettings) -> anyhow::Result<()> {
-        std::fs::write(
+    async fn set_artifacts_settings(
+        &self,
+        artifacts_settings: ArtifactsSettings,
+    ) -> anyhow::Result<()> {
+        self.write(
             self.artifacts_dir.join(ARTIFACTS_SETTINGS_FILE_NAME),
-            serde_json::to_string(&artifacts_settings)?,
-        )?;
-
+            serde_json::to_string(&artifacts_settings)?.into(),
+        )
+        .await?;
         Ok(())
     }
 
@@ -77,7 +82,7 @@ impl VideoHandler {
         }
     }
 
-    pub fn set_default_output_path(&self, task_type: &VideoTaskType) -> anyhow::Result<()> {
+    pub async fn set_default_output_path(&self, task_type: &VideoTaskType) -> anyhow::Result<()> {
         let mut settings = self.get_artifacts_settings();
 
         let current_model_name = match task_type {
@@ -143,21 +148,22 @@ impl VideoHandler {
         };
 
         let output_dir = self.artifacts_dir.join(PathBuf::from(output_dir));
-        if !output_dir.exists() {
-            std::fs::create_dir_all(&output_dir)?;
+        if !self.is_exist(output_dir.clone()).await? {
+            self.create_dir(output_dir).await?;
         }
 
-        self.set_artifacts_settings(settings)?;
+        self.set_artifacts_settings(settings).await?;
 
         Ok(())
     }
 
-    pub fn set_artifacts_result(&self, task_type: &VideoTaskType) -> anyhow::Result<()> {
+    pub async fn set_artifacts_result(&self, task_type: &VideoTaskType) -> anyhow::Result<()> {
         let output_info = self.get_output_info_in_settings(task_type)?;
 
-        let artifacts_result = std::fs::read_dir(self.artifacts_dir.join(&output_info.dir))?
+        let artifacts_result = self
+            .read_dir(self.artifacts_dir.join(&output_info.dir))
+            .await?
             .into_iter()
-            .filter_map(|v| v.ok().map(|t| t.path()))
             .filter_map(|v| {
                 v.file_name()
                     .map(|t| PathBuf::from(PathBuf::from(t.to_os_string())))
@@ -194,7 +200,7 @@ impl VideoHandler {
             _ => bail!("output path not found in settings"),
         }
 
-        self.set_artifacts_settings(settings)?;
+        self.set_artifacts_settings(settings).await?;
 
         Ok(())
     }
@@ -217,7 +223,8 @@ impl VideoHandler {
         }
     }
 
-    pub(crate) fn _delete_artifacts_by_task(
+    #[async_recursion]
+    pub(crate) async fn _delete_artifacts_by_task(
         &self,
         task_type: &VideoTaskType,
     ) -> anyhow::Result<()> {
@@ -225,15 +232,16 @@ impl VideoHandler {
         let output_path_map = settings.results.remove(&task_type.to_string());
         if let Some(output_path_map) = output_path_map {
             for output_path in output_path_map.values() {
-                std::fs::remove_dir_all(self.artifacts_dir.join(output_path.dir.to_owned()))?;
+                self.remove_dir_all(self.artifacts_dir.join(output_path.dir.to_owned()))
+                    .await?;
             }
         }
 
-        self.set_artifacts_settings(settings)?;
+        self.set_artifacts_settings(settings).await?;
 
         let child_task_type_list = task_type.get_child_task();
         for task_type in child_task_type_list {
-            self._delete_artifacts_by_task(&task_type)?;
+            self._delete_artifacts_by_task(&task_type).await?;
         }
 
         Ok(())

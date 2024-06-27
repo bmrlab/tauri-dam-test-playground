@@ -24,13 +24,14 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
+use storage_macro::Storage;
 use strum_macros::{EnumIter, EnumString};
 
 /// Video Handler
 ///
 /// VideoHandler is a helper to extract video artifacts and embeddings, and save results into databases.
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Storage)]
 pub struct VideoHandler {
     video_path: std::path::PathBuf,
     file_identifier: String,
@@ -109,7 +110,8 @@ impl VideoHandler {
     /// * `video_file_hash` - The hash of the video file
     /// * `library` - Current library reference
     pub fn new(video_file_hash: &str, library: &Library) -> anyhow::Result<Self> {
-        let artifacts_dir = library.artifacts_dir(video_file_hash);
+        let artifacts_dir = library.relative_artifacts_path(video_file_hash);
+        // TODO: 暂时先使用绝对路径给 ffmpeg 使用，后续需要将文件加载到内存中传递给 ffmpeg
         let video_path = library.file_path(video_file_hash);
 
         Ok(Self {
@@ -332,7 +334,7 @@ impl FileHandler for VideoHandler {
                 tracing::info!("run task {} with existing artifacts", task_type);
             }
             _ => {
-                self.set_default_output_path(&task_type)?;
+                self.set_default_output_path(&task_type).await?;
             }
         }
 
@@ -347,7 +349,7 @@ impl FileHandler for VideoHandler {
             // !! DO NOT add default arm here
         }
 
-        self.set_artifacts_result(&task_type)?;
+        self.set_artifacts_result(&task_type).await?;
 
         Ok(())
     }
@@ -386,10 +388,13 @@ impl FileHandler for VideoHandler {
         self.delete_artifacts_in_db().await?;
 
         // delete artifacts on file system
-        std::fs::remove_dir_all(self.artifacts_dir.clone()).map_err(|e| {
-            tracing::error!("failed to delete artifacts: {}", e);
-            e
-        })?;
+
+        self.remove_dir_all(self.artifacts_dir.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!("failed to delete artifacts: {}", e);
+                e
+            })?;
 
         Ok(())
     }
@@ -448,7 +453,7 @@ impl FileHandler for VideoHandler {
         self.delete_artifacts_in_db_by_task(task_type).await?;
 
         let task_type = VideoTaskType::from_str(task_type)?;
-        self._delete_artifacts_by_task(&task_type)?;
+        self._delete_artifacts_by_task(&task_type).await?;
 
         Ok(())
     }

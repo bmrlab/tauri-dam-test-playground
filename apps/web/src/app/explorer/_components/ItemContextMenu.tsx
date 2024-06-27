@@ -1,16 +1,17 @@
 import { useExplorerContext } from '@/Explorer/hooks'
 import { useExplorerStore } from '@/Explorer/store'
-import { rspc, queryClient } from '@/lib/rspc'
-import { ContextMenu } from '@gendam/ui/v2/context-menu'
-import { useRouter } from 'next/navigation'
-import { forwardRef, useCallback, useMemo } from 'react'
+import { type ExplorerItem } from '@/Explorer/types'
+import { useAudioDialog } from '@/components/Audio/AudioDialog'
+import { useInspector } from '@/components/Inspector/store'
 import { useQuickViewStore } from '@/components/Shared/QuickView/store'
 import { useMoveTargetSelected } from '@/hooks/useMoveTargetSelected'
 import { useOpenFileSelection } from '@/hooks/useOpenFileSelection'
-import { useInspector } from '@/components/Inspector/store'
-import { useAudioDialog } from '@/components/Audio/AudioDialog'
 import { type FilePath } from '@/lib/bindings'
-import { type ExplorerItem } from '@/Explorer/types'
+import { queryClient, rspc } from '@/lib/rspc'
+import { ContextMenu } from '@gendam/ui/v2/context-menu'
+import { useRouter } from 'next/navigation'
+import { forwardRef, useCallback, useMemo } from 'react'
+import { toast } from 'sonner'
 
 type ItemContextMenuProps = {
   data: FilePath
@@ -47,6 +48,7 @@ const ItemContextMenu = forwardRef<typeof ContextMenu.Content, ItemContextMenuPr
   const processJobsMut = rspc.useMutation(['video.tasks.regenerate'])
   const p2pStateQuery = rspc.useQuery(['p2p.state'])
   const p2pMut = rspc.useMutation(['p2p.share'])
+  const { mutateAsync: uploadToS3 } = rspc.useMutation(['storage.upload_to_s3'])
 
   /**
    * 这里都改成处理 selectedItems 而不只是处理当前的 item
@@ -129,7 +131,7 @@ const ItemContextMenu = forwardRef<typeof ContextMenu.Content, ItemContextMenuPr
           await processJobsMut.mutateAsync({ assetObjectId })
         } catch (error) {}
         queryClient.invalidateQueries({
-          queryKey: ['tasks.list', { filter: { assetObjectId }}],
+          queryKey: ['tasks.list', { filter: { assetObjectId } }],
         })
       }
     },
@@ -146,9 +148,29 @@ const ItemContextMenu = forwardRef<typeof ContextMenu.Content, ItemContextMenuPr
     [selectedFilePathItems, p2pMut],
   )
 
+  const handleUpload = useCallback(async () => {
+    let hashes = selectedFilePathItems.map((s) => s.assetObject?.hash).filter((s) => !!s) as string[]
+    let materializedPaths = selectedFilePathItems.filter((s) => s.isDir).map((s) => `${s.materializedPath}${s.name}/`)
+    let payload = {
+      hashes,
+      materializedPaths,
+    }
+
+    if (hashes.length > 0 || materializedPaths.length > 0) {
+      try {
+        await uploadToS3(payload)
+        toast.success('Upload success')
+      } catch (error) {
+        toast.error('Upload failed')
+      }
+    }
+  }, [selectedFilePathItems])
+
   return (
     <ContextMenu.Content
-      ref={forwardedRef as any} {...prpos} onClick={(e) => e.stopPropagation()}
+      ref={forwardedRef as any}
+      {...prpos}
+      onClick={(e) => e.stopPropagation()}
       className="data-[state=closed]:animate-none data-[state=closed]:duration-0"
     >
       <ContextMenu.Item onSelect={handleOpen} disabled={explorer.selectedItems.size > 1}>
@@ -167,16 +189,15 @@ const ItemContextMenu = forwardRef<typeof ContextMenu.Content, ItemContextMenuPr
       >
         <div>Regen thumbnail</div>
       </ContextMenu.Item>
-      <ContextMenu.Item
-        onSelect={handleProcessJobs}
-        disabled={selectedFilePathItems.some((item) => !item.assetObject)}
-      >
+      <ContextMenu.Item onSelect={handleProcessJobs} disabled={selectedFilePathItems.some((item) => !item.assetObject)}>
         <div>Re-process jobs</div>
       </ContextMenu.Item>
-      <ContextMenu.Item onSelect={() => {
-        const items = selectedFilePathItems
-        return items.length === 1 ? audioDialog.singleExport(items[0]) : audioDialog.batchExport(items)
-      }}>
+      <ContextMenu.Item
+        onSelect={() => {
+          const items = selectedFilePathItems
+          return items.length === 1 ? audioDialog.singleExport(items[0]) : audioDialog.batchExport(items)
+        }}
+      >
         <div>Export transcript</div>
       </ContextMenu.Item>
       <ContextMenu.Separator className="bg-app-line my-1 h-px" />
@@ -185,6 +206,10 @@ const ItemContextMenu = forwardRef<typeof ContextMenu.Content, ItemContextMenuPr
       </ContextMenu.Item>
       <ContextMenu.Item onSelect={handleRename} disabled={explorer.selectedItems.size > 1}>
         <div>Rename</div>
+      </ContextMenu.Item>
+      <ContextMenu.Separator className="bg-app-line my-1 h-px" />
+      <ContextMenu.Item onSelect={handleUpload}>
+        <div>Upload</div>
       </ContextMenu.Item>
       <ContextMenu.Separator className="bg-app-line my-1 h-px" />
       <ContextMenu.Sub>

@@ -94,7 +94,6 @@ impl AIHandler {
                                 "Large" => ai::blip::BLIPModel::Large,
                                 _ => ai::blip::BLIPModel::Base,
                             };
-
                             BLIP::new(model_path, tokenizer_path, model_type).await
                         }
                         _ => {
